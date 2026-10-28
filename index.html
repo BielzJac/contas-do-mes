@@ -272,11 +272,12 @@ if(!Array.isArray(S.assinaturas)) S.assinaturas = [];
 if(!Array.isArray(S.parcelamentos)) S.parcelamentos = [];
 if(!Array.isArray(S.notas)) S.notas = [];
 if(!Array.isArray(S.categorias)) S.categorias = [];
+if(!Array.isArray(S.envelopes)) S.envelopes = [];
 let notaFiltro = "todas";
 const TIPOS = {comprar:"Quero comprar", economizar:"Economizar", lembrete:"Lembrete", ideia:"Ideia"};
 if(!S.metas || typeof S.metas!=="object") S.metas = {gastoMax:null, economia:null, reserva:null};
 let view = "contas";
-try{ const sv=sessionStorage.getItem("contas-view"); if(["geral","notas","limites"].includes(sv)) view=sv; }catch(_){}
+try{ const sv=sessionStorage.getItem("contas-view"); if(["geral","notas","limites","envelopes"].includes(sv)) view=sv; }catch(_){}
 const restante = p => Math.max(0,(p.parcelas||0)-(p.atual||0))*(Number(p.valor)||0);
 let dirty = false, saving = false, saveMsg = "", modal = null, artifactApi = undefined;
 
@@ -339,13 +340,14 @@ function render(){
     <div class="actions">
       ${view==="contas"
         ? '<button class="btn" data-act="new">+ Nova conta</button><button class="btn" data-act="go-limites">Limites do mês</button><button class="btn" data-act="close">Fechar mês</button>'
-        : `<button class="btn" data-act="go-contas">← Contas</button>${view==="geral"||view==="limites"?'<button class="btn" data-act="metas">Editar metas</button>':""}${view==="limites"?'<button class="btn" data-act="new-cat">+ Categoria</button>':""}`}
+        : `<button class="btn" data-act="go-contas">← Contas</button>${view==="geral"||view==="limites"?'<button class="btn" data-act="metas">Editar metas</button>':""}${view==="limites"?'<button class="btn" data-act="new-cat">+ Categoria</button>':""}${view==="envelopes"?'<button class="btn" data-act="new-env">+ Envelope</button>':""}`}
     </div>
   </header>
   ${drawerHTML()}`;
   if(view==="geral"){ h += overviewHTML(); finish(h); return; }
   if(view==="notas"){ h += notesHTML(); finish(h); return; }
   if(view==="limites"){ h += catsHTML(); finish(h); return; }
+  if(view==="envelopes"){ h += envelopesHTML(); finish(h); return; }
   h += `
   <section class="result" aria-label="Resumo do mês">
     <div><span class="label">Entra no mês</span><span class="v">${brl(t.entra)}</span><span class="sub">${days.map(d=>"dia "+dd(d)).join(" + ")}</span></div>
@@ -377,8 +379,10 @@ function render(){
   // assinaturas
   const subsTotal = sum(S.assinaturas);
   const semValor = S.assinaturas.filter(a=>a.valor==null).length;
+  const subsPrev = S.assinaturas.reduce((t,a)=>t+(a.cancelar?0:(a.valorFuturo!=null?a.valorFuturo:(Number(a.valor)||0))),0);
+  const temPrev = S.assinaturas.some(a=>a.cancelar||a.valorFuturo!=null);
   h += `<section class="lower"><div class="panel" aria-label="Assinaturas"><div class="panel-head"><div><h2>Assinaturas</h2>
-      <div class="small">${S.assinaturas.length} ativa(s)${S.assinaturas.length?` · ${brl(subsTotal)}/mês${semValor?` (${semValor} sem valor)`:""}`:""} · já entram na fatura do cartão</div></div>
+      <div class="small">${S.assinaturas.length} ativa(s)${S.assinaturas.length?` · ${brl(subsTotal)}/mês hoje${semValor?` (${semValor} sem valor)`:""}`:""}${temPrev?` · <strong class="num">${brl(subsPrev)}/mês</strong> com as mudanças previstas (${subsPrev<=subsTotal?"− ":"+ "}${brl(Math.abs(subsTotal-subsPrev))})`:""} · já entram na fatura do cartão</div></div>
       <button class="btn ghost" data-act="new-sub">+ Assinatura</button></div>
     ${S.assinaturas.length?`<ul class="subs-list">${S.assinaturas.map(subRow).join("")}</ul>`:'<p class="note">Nenhuma assinatura cadastrada.</p>'}
   </div>`;
@@ -482,6 +486,93 @@ function catEditor(id){
     {id:"k-clim",key:"limite",label:"Limite por mês (R$)",value:c.limite,money:true}],
     onSave: v => { if(isNew) S.categorias.push({id:uid("cat"),...v,gastos:[]}); else Object.assign(c,v); },
     onDelete: isNew ? null : () => { S.categorias = S.categorias.filter(x=>x.id!==id); }});
+}
+
+/* ---------- envelopes ---------- */
+function envelopesHTML(){
+  const t = totals();
+  const gastoEnv = S.envelopes.filter(e=>e.tipo!=="guardar"), guardEnv = S.envelopes.filter(e=>e.tipo==="guardar");
+  const plan = sum(S.envelopes), planG = sum(gastoEnv), planR = sum(guardEnv);
+  const sobra = t.res;
+  const falta = plan - Math.max(0, sobra);
+  const st = sobra >= plan ? "good" : sobra > 0 ? "warn" : "bad";
+  const porConta = {};
+  S.envelopes.forEach(e => { const k = e.conta || "Sem conta definida"; (porConta[k] = porConta[k] || {total:0, itens:[]}); porConta[k].total += Number(e.valor)||0; porConta[k].itens.push(e.nome); });
+  return `
+  <section class="verdict" aria-label="Situação dos envelopes"><span class="dot st-${st}" aria-hidden="true"></span>
+    <div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><h2>${st==="good"?"Dá para encher todos os envelopes":"Este mês ainda é de transição"}</h2><span class="pill st-${st}">${brl(plan)} planejado</span></div>
+    <p>${st==="good"
+      ? `Depois das contas do mês sobram ${brl(sobra)}. Enchendo os envelopes (${brl(planG)} para gastar e ${brl(planR)} para guardar), ainda ficam ${brl(sobra-plan)} livres.`
+      : `Depois das contas do mês ${sobra>=0?`sobram só ${brl(sobra)}`:`faltam ${brl(-sobra)}`}, e os envelopes pedem ${brl(plan)}. Faltam ${brl(falta)} para encher todos. Enquanto as faturas tiverem o dia a dia no crédito, siga o plano nas Notas; quando a fatura ficar só com assinaturas e parcelas, os envelopes passam a caber.`}</p></div>
+  </section>
+
+  <div class="panel"><div class="panel-head"><div><h2>Transferências do dia 05</h2><div class="small">Depois de pagar a fatura, mande para cada conta</div></div></div>
+    <div class="rows">${Object.entries(porConta).map(([k,v])=>`<div class="row"><span>${esc(k)} <span class="small">· ${v.itens.map(esc).join(", ")}</span></span><span class="num">${brl(v.total)}</span></div>`).join("")}
+    <div class="row total"><span>Total</span><span class="num">${brl(plan)}</span></div></div>
+  </div>
+
+  <section class="cats">${S.envelopes.map(envCard).join("")||'<p class="note">Nenhum envelope. Use + Envelope para criar.</p>'}</section>
+  <p class="disclaimer">Anote aqui o que gastar no Pix ou no débito de cada envelope. Os gastos zeram ao fechar o mês; os valores planejados continuam.</p>`;
+}
+function envCard(e){
+  if(e.tipo==="guardar"){
+    return `<div class="panel" aria-label="${esc(e.nome)}">
+      <div class="panel-head"><button class="btn ghost" style="padding:0;color:var(--ink)" data-env-edit="${e.id}"><h2>${esc(e.nome)}</h2></button><span class="pill st-${e.feito?"good":"none"}">${e.feito?"Guardado":"Para guardar"}</span></div>
+      <div class="cat-big"><span class="v">${brl(e.valor)}</span><span class="chip card">${esc(e.conta||"Sem conta")}</span></div>
+      <div class="small">Transfira no dia 05 e não mexa.</div>
+      <div><button class="btn ${e.feito?"":"primary"}" data-env-feito="${e.id}">${e.feito?"Desfazer":"Marcar como guardado"}</button></div>
+    </div>`;
+  }
+  const gasto = sum(e.gastos||[]); const p = e.valor>0 ? gasto/e.valor*100 : 0;
+  const st = p<=80?"good":p<=100?"warn":"bad";
+  const lista = (e.gastos||[]).slice().reverse();
+  return `<div class="panel" aria-label="${esc(e.nome)}">
+    <div class="panel-head"><button class="btn ghost" style="padding:0;color:var(--ink)" data-env-edit="${e.id}"><h2>${esc(e.nome)}</h2></button><span class="pill st-${st}">${st==="bad"?"Acabou":st==="warn"?"Quase no fim":"Com saldo"}</span></div>
+    <div class="cat-big"><span class="v ${gasto>e.valor?"neg":""}">${brl(Math.max(0,e.valor-gasto))}</span><span class="small num">sobra de ${brl(e.valor)}</span></div>
+    ${meter(p,st)}
+    <div class="small" style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><span class="chip card">${esc(e.conta||"Sem conta")}</span><span>${gasto>e.valor?`passou ${brl(gasto-e.valor)}`:`gasto ${brl(gasto)}`}</span></div>
+    <div class="cat-add">
+      <input id="ev-${e.id}" inputmode="decimal" placeholder="R$ 0,00" aria-label="Valor gasto em ${esc(e.nome)}">
+      <input id="ed-${e.id}" placeholder="o que foi (opcional)" aria-label="Descrição do gasto">
+      <button class="btn" data-env-add="${e.id}">Anotar</button>
+    </div>
+    <p class="err" id="ee-${e.id}" hidden></p>
+    ${lista.length?`<ul class="gastos">${lista.map(g=>`<li><span>${esc(g.desc||"Gasto")} <span class="small">· ${esc(g.data||"")}</span></span><span class="num">${brl(g.valor)}</span><button class="x" data-env-del="${e.id}:${g.id}" aria-label="Remover gasto">×</button></li>`).join("")}</ul>`:'<p class="note" style="margin:0">Nenhum gasto anotado este mês.</p>'}
+  </div>`;
+}
+function envAdd(id){
+  const e = S.envelopes.find(x=>x.id===id); const vi = document.getElementById("ev-"+id), di = document.getElementById("ed-"+id), err = document.getElementById("ee-"+id);
+  const v = parseMoney(vi.value);
+  if(!isFinite(v) || v<=0){ err.textContent="Digite o valor, por exemplo 45,90."; err.hidden=false; vi.focus(); return; }
+  e.gastos = e.gastos||[]; e.gastos.push({id:uid("g"), valor:v, desc:di.value.trim(), data:hojeBR().slice(0,5)});
+  change();
+  const again = document.getElementById("ev-"+id); if(again) again.focus();
+}
+function envEditor(id){
+  const isNew = !id; const e = isNew ? {nome:"",conta:"",valor:null,tipo:"gasto"} : S.envelopes.find(x=>x.id===id);
+  openModal({html:()=>`<h2>${isNew?"Novo envelope":"Editar envelope"}</h2>
+    <div class="field"><label for="v-nome">Nome</label><input id="v-nome" value="${esc(e.nome)}" placeholder="ex.: Farmácia"></div>
+    <div class="field"><label for="v-conta">Onde fica o dinheiro</label><input id="v-conta" value="${esc(e.conta||"")}" placeholder="ex.: PicPay, caixinha no Inter"></div>
+    <div class="two">
+      <div class="field"><label for="v-val">Valor por mês (R$)</label><input id="v-val" inputmode="decimal" value="${moneyIn(e.valor)}" placeholder="0,00"></div>
+      <div class="field"><label for="v-tipo">Tipo</label><select id="v-tipo"><option value="gasto" ${e.tipo!=="guardar"?"selected":""}>Para gastar</option><option value="guardar" ${e.tipo==="guardar"?"selected":""}>Para guardar</option></select></div>
+    </div>
+    <p class="err" id="v-err" hidden></p>
+    <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="v-del">Excluir</button>'}</div>
+      <div><button class="btn" id="v-cancel">Cancelar</button><button class="btn primary" id="v-ok">${isNew?"Adicionar":"Salvar"}</button></div></div>`,
+  bind(o){
+    const g = x => o.querySelector("#"+x);
+    g("v-cancel").onclick = closeModal;
+    if(g("v-del")) g("v-del").onclick = () => { const b=g("v-del"); if(b.dataset.sure){ S.envelopes=S.envelopes.filter(x=>x.id!==id); change(); closeModal(); } else { b.dataset.sure="1"; b.textContent="Confirmar exclusão"; } };
+    g("v-ok").onclick = () => {
+      const nome = g("v-nome").value.trim(), valor = parseMoney(g("v-val").value), err = g("v-err");
+      if(!nome){ err.textContent="Dê um nome para o envelope."; err.hidden=false; return; }
+      if(!isFinite(valor) || valor<0){ err.textContent="Digite o valor por mês, por exemplo 400,00."; err.hidden=false; return; }
+      const out = {nome, conta:g("v-conta").value.trim(), valor, tipo:g("v-tipo").value};
+      if(isNew) S.envelopes.push({id:uid("e"), ...out, gastos:[], feito:false}); else Object.assign(e, out);
+      change(); closeModal();
+    };
+  }});
 }
 
 /* ---------- visão geral ---------- */
@@ -598,7 +689,7 @@ function overviewHTML(){
   <p class="disclaimer">Os indicadores usam faixas de referência comuns (como até 30% da renda em parcelas). São uma ajuda para enxergar a situação, não uma recomendação financeira.</p>`;
 }
 /* ---------- menu ---------- */
-const VIEWS = {contas:"Contas do Mês", geral:"Visão geral", limites:"Limites do mês", notas:"Notas"};
+const VIEWS = {contas:"Contas do Mês", geral:"Visão geral", limites:"Limites do mês", envelopes:"Envelopes", notas:"Notas"};
 function drawerHTML(){
   const abertas = S.notas.filter(n=>!n.feito).length;
   const estouradas = S.categorias.filter(c=>sum(c.gastos||[])>c.limite).length;
@@ -608,6 +699,7 @@ function drawerHTML(){
     ${item("contas","Contas")}
     ${item("geral","Visão geral")}
     ${item("limites","Limites do mês", estouradas?`<span class="count" style="color:var(--bad)">${estouradas} estourou</span>`:"")}
+    ${item("envelopes","Envelopes")}
     ${item("notas","Notas", abertas?`<span class="count">${abertas}</span>`:"")}
     <div class="nav-sep"></div>
     <div class="label nav-label">Ferramentas</div>
@@ -909,7 +1001,7 @@ function subRow(a){
   return `<li class="sub-row"><button data-edit-sub="${a.id}">
     <span class="sub-name">${esc(a.nome)}</span>
     <span class="num">${a.valor!=null?brl(a.valor):'<span class="small">sem valor</span>'}</span>
-    <span class="meta">${card?`<span class="chip card">Cartão ${esc(card.nome)}</span>`:'<span class="chip nocard">Cartão não definido</span>'}${a.dia?`<span>cobra dia ${dd(a.dia)}</span>`:""}</span>
+    <span class="meta">${a.cancelar?'<span class="chip late">Vou cancelar</span>':""}${!a.cancelar&&a.valorFuturo!=null?`<span class="chip est">Pode ir para ${brl(a.valorFuturo)}</span>`:""}${card?`<span class="chip card">Cartão ${esc(card.nome)}</span>`:'<span class="chip nocard">Cartão não definido</span>'}${a.dia?`<span>cobra dia ${dd(a.dia)}</span>`:""}</span>
   </button></li>`;
 }
 function parcRow(p){
@@ -966,6 +1058,8 @@ function subEditor(id){
       <div class="field"><label for="a-val">Valor por mês (R$)</label><input id="a-val" inputmode="decimal" value="${moneyIn(a.valor)}" placeholder="opcional"></div>
       <div class="field"><label for="a-dia">Cobra dia</label><input id="a-dia" inputmode="numeric" value="${a.dia??""}" placeholder="opcional"></div>
     </div>
+    <div class="field"><label for="a-fut">Novo valor previsto (R$)</label><input id="a-fut" inputmode="decimal" value="${moneyIn(a.valorFuturo)}" placeholder="opcional — se o preço for mudar"></div>
+    <label class="check"><input type="checkbox" id="a-canc" ${a.cancelar?"checked":""}> Pretendo cancelar</label>
     <p class="err" id="a-err" hidden></p>
     <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="a-del">Excluir</button>'}</div>
       <div><button class="btn" id="a-cancel">Cancelar</button><button class="btn primary" id="a-ok">${isNew?"Adicionar":"Salvar"}</button></div></div>`,
@@ -979,7 +1073,9 @@ function subEditor(id){
       let valor = null;
       if(rawV){ valor = parseMoney(rawV); if(!isFinite(valor)){ err.textContent="Digite o valor, por exemplo 21,90."; err.hidden=false; return; } }
       const diaN = parseInt(g("a-dia").value,10);
-      const out = {...a, id:a.id||uid("a"), nome, cartao:g("a-card").value, valor, dia: diaN>=1&&diaN<=31?diaN:null};
+      const rawF = g("a-fut").value.trim(); let valorFuturo = null;
+      if(rawF){ valorFuturo = parseMoney(rawF); if(!isFinite(valorFuturo)){ err.textContent="Confira o novo valor, por exemplo 189,00."; err.hidden=false; return; } }
+      const out = {...a, id:a.id||uid("a"), nome, cartao:g("a-card").value, valor, dia: diaN>=1&&diaN<=31?diaN:null, valorFuturo, cancelar:g("a-canc").checked};
       if(isNew) S.assinaturas.push(out); else S.assinaturas = S.assinaturas.map(x=>x.id===id?out:x);
       change(); closeModal();
     };
@@ -1117,6 +1213,10 @@ function exportText(){
     L.push("", sep, "NOTAS -->", "");
     for(const n of abertas) L.push(`\t[${(TIPOS[n.tipo]||"Nota").toUpperCase()}] ${n.texto.replace(/\n+/g," / ")}${n.valor!=null?" = "+brl(n.valor).replace(/\s/g,""):""}`);
   }
+  if(S.envelopes.length){
+    L.push("", sep, "ENVELOPES -->", "");
+    for(const e of S.envelopes) L.push(`\t${e.nome.toUpperCase()} (${(e.conta||"?").toUpperCase()}) = ${brl(e.valor).replace(/\s/g,"")}${e.tipo==="guardar"?" [GUARDAR]":" - gasto "+brl(sum(e.gastos||[])).replace(/\s/g,"")}`);
+  }
   L.push("", sep, "PARADO EM CONTA -->", "");
   for(const s of S.conta) L.push(`\t${s.nome.toUpperCase()} = ${brl(s.valor).replace(/\s/g,"")}`);
   L.push("", "", "GUARDADO -->", "");
@@ -1135,7 +1235,7 @@ function closeMonth(){
       <li>parceladas pagas avançam uma parcela e somem quando terminam;</li>
       <li>compras parceladas no cartão avançam uma parcela e saem da lista depois da última;</li>
       <li>contas marcadas “só este mês” que já foram pagas saem da lista;</li>
-      <li>os gastos anotados nos limites do mês são zerados (os limites continuam);</li>
+      <li>os gastos anotados nos limites do mês e nos envelopes são zerados (os valores planejados continuam);</li>
       <li>as notas continuam como estão.</li></ul>
     ${pend.length?`<p class="err">${pend.length} conta(s) ainda não marcada(s) como paga(s) (${brl(sum(pend))}). Elas continuam na lista e ficam marcadas como atrasadas.</p>`:""}
     <div class="field"><label for="m-ciclo">Nome do próximo mês</label><input id="m-ciclo" placeholder="ex.: Dezembro"></div>
@@ -1152,6 +1252,7 @@ function closeMonth(){
       }
       S.contas = next;
       S.categorias = S.categorias.map(c=>({...c, gastos:[]}));
+      S.envelopes = S.envelopes.map(e=>({...e, gastos:[], feito:false}));
       S.parcelamentos = S.parcelamentos.filter(p=>(p.atual||0) < (p.parcelas||0)).map(p=>({...p, atual:(p.atual||0)+1}));
       S.ciclo = o.querySelector("#m-ciclo").value.trim() || S.ciclo;
       change(); closeModal();
@@ -1168,6 +1269,10 @@ $app.addEventListener("click", e => {
   if(el.dataset.editSub){ subEditor(el.dataset.editSub); return; }
   if(el.dataset.editParc){ parcEditor(el.dataset.editParc); return; }
   if(el.dataset.catAdd){ catAdd(el.dataset.catAdd); return; }
+  if(el.dataset.envAdd){ envAdd(el.dataset.envAdd); return; }
+  if(el.dataset.envEdit){ envEditor(el.dataset.envEdit); return; }
+  if(el.dataset.envFeito){ const e=S.envelopes.find(x=>x.id===el.dataset.envFeito); e.feito=!e.feito; change(); return; }
+  if(el.dataset.envDel){ const [eid,gid]=el.dataset.envDel.split(":"); const e=S.envelopes.find(x=>x.id===eid); e.gastos=e.gastos.filter(g=>g.id!==gid); change(); return; }
   if(el.dataset.catEdit){ catEditor(el.dataset.catEdit); return; }
   if(el.dataset.catDel){ const [cid,gid]=el.dataset.catDel.split(":"); const c=S.categorias.find(x=>x.id===cid); c.gastos=c.gastos.filter(g=>g.id!==gid); change(); return; }
   if(el.dataset.filtro){ notaFiltro = el.dataset.filtro; render(); return; }
@@ -1200,7 +1305,7 @@ $app.addEventListener("click", e => {
   switch(el.dataset.act){
     case "new": if(!payDays().length){ recEditor(); break; } billEditor(null); break;
     case "new-rec": setMenu(false); recEditor(); break;
-    case "go-contas": case "go-geral": case "go-limites": case "go-notas":
+    case "go-contas": case "go-geral": case "go-limites": case "go-envelopes": case "go-notas":
       view = el.dataset.act.slice(3);
       try{ sessionStorage.setItem("contas-view", view); }catch(_){} render(); window.scrollTo(0,0); break;
     case "menu": setMenu(true); break;
@@ -1208,6 +1313,7 @@ $app.addEventListener("click", e => {
     case "backup": setMenu(false); backupDialog(); break;
     case "add-nota": addNota(); break;
     case "new-cat": catEditor(null); break;
+    case "new-env": envEditor(null); break;
     case "metas": metasEditor(); break;
     case "new-sub": subEditor(null); break;
     case "new-parc": parcEditor(null); break;
@@ -1238,6 +1344,7 @@ $app.addEventListener("input", e => { if(e.target.id==="ciclo"){ S.ciclo = e.tar
 document.addEventListener("keydown", e => {
   if(e.key==="Escape"){ if(modal) closeModal(); else setMenu(false); }
   if(e.key==="Enter" && e.target.id && /^c[vd]-/.test(e.target.id)){ e.preventDefault(); catAdd(e.target.id.slice(3)); }
+  if(e.key==="Enter" && e.target.id && /^e[vd]-/.test(e.target.id)){ e.preventDefault(); envAdd(e.target.id.slice(3)); }
 });
 
 function renderSaveBarOnly(){
