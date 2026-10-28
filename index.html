@@ -27,7 +27,7 @@ img{max-width:100%}
 :root{
   --bg:#f3f5f8; --surface:#ffffff; --ink:#151a24; --muted:#5d6676; --line:#dfe3ea;
   --accent:#2747c9; --accent-soft:#e6ebfb;
-  --good:#127a4b; --good-soft:#e1f3ea; --bad:#b4232e; --bad-soft:#fbe6e7; --warn:#9a5b00; --warn-soft:#fbefd9;
+  --good:#127a4b; --good-soft:#e1f3ea; --bad:#b4232e; --bad-soft:#fbe6e7; --warn:#9a5b00; --warn-soft:#fbefd9; --mark:#fde68a;
   --f-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
   --f-body:"Figtree",ui-sans-serif,system-ui,sans-serif;
   --f-num:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -35,11 +35,11 @@ img{max-width:100%}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0e1117; --surface:#171b24; --ink:#e8ebf1; --muted:#98a1b2; --line:#2a303c;
   --accent:#8ea2ff; --accent-soft:#1e2643;
-  --good:#5fd39a; --good-soft:#15291f; --bad:#ff7b84; --bad-soft:#2f1619; --warn:#f2b64c; --warn-soft:#2c2212; color-scheme:dark}}
+  --good:#5fd39a; --good-soft:#15291f; --bad:#ff7b84; --bad-soft:#2f1619; --warn:#f2b64c; --warn-soft:#2c2212; --mark:#7a5d0c; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0e1117; --surface:#171b24; --ink:#e8ebf1; --muted:#98a1b2; --line:#2a303c;
   --accent:#8ea2ff; --accent-soft:#1e2643;
-  --good:#5fd39a; --good-soft:#15291f; --bad:#ff7b84; --bad-soft:#2f1619; --warn:#f2b64c; --warn-soft:#2c2212; color-scheme:dark}
+  --good:#5fd39a; --good-soft:#15291f; --bad:#ff7b84; --bad-soft:#2f1619; --warn:#f2b64c; --warn-soft:#2c2212; --mark:#7a5d0c; color-scheme:dark}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
 #app{max-width:1060px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px;display:grid;gap:22px}
 h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
@@ -210,7 +210,24 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .note-card.done{opacity:.62}
 .note-card.done .note-text{text-decoration:line-through}
 .note-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
-.note-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;flex:1 1 auto}
+.note-text{overflow-wrap:anywhere;margin:0;flex:1 1 auto;line-height:1.5}
+.note-text ul,.note-text ol,.rte-area ul,.rte-area ol{margin:.25em 0;padding-left:1.4em}
+.note-text div,.rte-area div,.rte-area p{margin:0}
+mark{background:var(--mark);color:inherit;padding:0 .12em;border-radius:3px}
+/* editor de texto */
+.rte{border:1px solid var(--line);border-radius:10px;background:var(--bg);display:grid}
+.rte:focus-within{border-color:var(--accent)}
+.rte-bar{display:flex;flex-wrap:wrap;gap:2px;padding:6px;border-bottom:1px solid var(--line);background:var(--surface);border-radius:10px 10px 0 0}
+.rte-btn{min-width:36px;height:36px;border:0;background:transparent;border-radius:7px;display:grid;place-items:center;padding:0 8px;color:var(--ink);font-size:15px;line-height:1}
+.rte-btn:hover{background:var(--bg)}
+.rte-btn[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.rte-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rte-btn .hl{background:var(--mark);padding:1px 5px;border-radius:3px;font-weight:700}
+.rte-sep{width:1px;background:var(--line);margin:6px 4px}
+.rte-area{min-height:220px;padding:14px 16px;outline:none;line-height:1.55;overflow-wrap:anywhere;font-size:15px}
+.rte-area:empty::before{content:attr(data-placeholder);color:var(--muted);pointer-events:none}
+.sheet.wide{width:min(780px,100%)}
+.sheet.wide .rte-area{min-height:min(50vh,460px)}
 .note-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .note-foot .acts{display:flex;gap:4px}
 .chip.t-comprar{background:var(--accent-soft);color:var(--accent);border-color:transparent}
@@ -667,7 +684,7 @@ function notesHTML(){
   <section class="panel" aria-label="Nova nota">
     <div class="panel-head"><div><h2>Nova nota</h2><div class="small">Coisas que quer comprar, quanto quer economizar, lembretes e planos com dinheiro. Ficam salvas entre os meses.</div></div></div>
     <div class="compose">
-      <textarea id="nt-texto" aria-label="Texto da nota" placeholder="ex.: Juntar para trocar o celular em março"></textarea>
+      ${rteHTML("nt-area", notaDraft, "Escreva sua nota… ex.: Juntar para trocar o celular em março")}
       <div class="compose-row">
         <div class="field"><label for="nt-tipo">Tipo</label><select id="nt-tipo">${tipoOptions("comprar")}</select></div>
         <div class="field"><label for="nt-valor">Valor (opcional)</label><input id="nt-valor" inputmode="decimal" placeholder="R$ 0,00"></div>
@@ -689,25 +706,150 @@ function notesHTML(){
   ${lista.length?`<section class="notes">${lista.map(n=>`
     <article class="note-card ${n.feito?"done":""}">
       <div class="note-top"><span class="chip t-${n.tipo}">${TIPOS[n.tipo]||"Nota"}</span>${n.valor!=null?`<span class="num">${brl(n.valor)}</span>`:""}</div>
-      <p class="note-text">${esc(n.texto)}</p>
+      <div class="note-text">${notaHTML(n)}</div>
       <div class="note-foot"><span class="small">${n.criada?esc(n.criada):""}${n.ciclo?` · ${esc(n.ciclo)}`:""}</span>
         <span class="acts"><button class="btn ghost" data-nota-feito="${n.id}">${n.feito?"Reabrir":"Marcar feita"}</button><button class="btn ghost" data-nota-edit="${n.id}">Editar</button></span></div>
     </article>`).join("")}</section>`
   : `<p class="note">${S.notas.length?"Nenhuma nota neste filtro.":"Nenhuma nota ainda. Escreva a primeira acima."}</p>`}`;
 }
+let notaDraft = "";
+const RTE_BTNS = [
+  ["bold",'<b>N</b>',"Negrito (Ctrl+B)"],
+  ["italic",'<i style="font-family:Georgia,serif">I</i>',"Itálico (Ctrl+I)"],
+  ["underline",'<u>S</u>',"Sublinhado (Ctrl+U)"],
+  ["strikeThrough",'<s>R</s>',"Riscado"],
+  ["mark",'<span class="hl">M</span>',"Marca-texto"],
+  "|",
+  ["insertUnorderedList",'<svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1" fill="currentColor"/><circle cx="4.5" cy="12" r="1" fill="currentColor"/><circle cx="4.5" cy="18" r="1" fill="currentColor"/></svg>',"Lista com marcadores"],
+  ["insertOrderedList",'<svg viewBox="0 0 24 24"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 5l1.5-1v5M3.5 14.5c.4-.9 2.6-.9 2.6.5 0 1-2.6 2-2.6 3h2.8" stroke-width="1.6"/></svg>',"Lista numerada"],
+  "|",
+  ["removeFormat",'<svg viewBox="0 0 24 24"><path d="M6 5h12M12 5l-3 14M5 19l14-14" /></svg>',"Limpar formatação"]
+];
+function rteHTML(id, html, ph){
+  return `<div class="rte"><div class="rte-bar" role="toolbar" aria-label="Formatação">
+    ${RTE_BTNS.map(b=>b==="|"?'<span class="rte-sep" aria-hidden="true"></span>':`<button type="button" class="rte-btn" data-rte="${b[0]}" data-for="${id}" title="${b[2]}" aria-label="${b[2]}" aria-pressed="false">${b[1]}</button>`).join("")}
+  </div><div class="rte-area" id="${id}" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Texto da nota" data-placeholder="${esc(ph)}">${html||""}</div></div>`;
+}
+function notaHTML(n){ return n.html ? sanitizeNote(n.html) : esc(n.texto||"").replace(/\n/g,"<br>"); }
+function sanitizeNote(html){
+  const tpl = document.createElement("template"); tpl.innerHTML = html||"";
+  const MAP = {B:"b",STRONG:"b",I:"i",EM:"i",U:"u",S:"s",STRIKE:"s",DEL:"s",MARK:"mark",UL:"ul",OL:"ol",LI:"li",DIV:"div",P:"div"};
+  const walk = node => {
+    let out = "";
+    node.childNodes.forEach(c => {
+      if(c.nodeType===3){ out += esc(c.nodeValue); return; }
+      if(c.nodeType!==1) return;
+      const tag = c.tagName;
+      if(["SCRIPT","STYLE","TEMPLATE","IFRAME","OBJECT"].includes(tag)) return;
+      if(tag==="BR"){ out += "<br>"; return; }
+      let inner = walk(c);
+      const st = (c.getAttribute && c.getAttribute("style")||"").toLowerCase();
+      const wrap = t => inner = `<${t}>${inner}</${t}>`;
+      if(/background(-color)?\s*:/.test(st) && !/transparent|initial|inherit/.test(st.split(/background(?:-color)?\s*:/)[1]||"")) wrap("mark");
+      if(/font-weight\s*:\s*(bold|[6-9]00)/.test(st)) wrap("b");
+      if(/font-style\s*:\s*italic/.test(st)) wrap("i");
+      if(/text-decoration[^;]*underline/.test(st)) wrap("u");
+      if(/text-decoration[^;]*line-through/.test(st)) wrap("s");
+      out += MAP[tag] ? `<${MAP[tag]}>${inner}</${MAP[tag]}>` : inner;
+    });
+    return out;
+  };
+  return walk(tpl.content).slice(0, 60000);
+}
+function htmlToText(html){
+  const tpl = document.createElement("template"); tpl.innerHTML = html||"";
+  let out = "";
+  const walk = node => node.childNodes.forEach(c => {
+    if(c.nodeType===3){ out += c.nodeValue; return; }
+    if(c.nodeType!==1) return;
+    if(c.tagName==="BR"){ out += "\n"; return; }
+    if(c.tagName==="LI") out += (c.parentElement && c.parentElement.tagName==="OL" ? (Array.from(c.parentElement.children).indexOf(c)+1)+". " : "• ");
+    walk(c);
+    if(["DIV","LI","UL","OL"].includes(c.tagName) && !out.endsWith("\n")) out += "\n";
+  });
+  walk(tpl.content);
+  return out.replace(/\n{3,}/g,"\n\n");
+}
+function placeCaretEnd(el){
+  try{ const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }catch(_){}
+}
+function selectionIn(area){
+  const s = getSelection(); if(!s || !s.rangeCount) return false;
+  return area.contains(s.anchorNode);
+}
+function unwrap(el){ const p = el.parentNode; while(el.firstChild) p.insertBefore(el.firstChild, el); p.removeChild(el); }
+function closestIn(area, sel){
+  const s = getSelection(); if(!s || !s.rangeCount) return null;
+  let n = s.anchorNode; n = n && (n.nodeType===1 ? n : n.parentElement);
+  const m = n && n.closest(sel); return m && area.contains(m) ? m : null;
+}
+function rteCmd(cmd, area){
+  if(!selectionIn(area)){ area.focus(); placeCaretEnd(area); }
+  try{ document.execCommand("styleWithCSS", false, false); }catch(_){}
+  if(cmd==="mark"){
+    const m = closestIn(area, "mark");
+    if(m){ unwrap(m); }
+    else if(!getSelection().isCollapsed){
+      try{ document.execCommand("styleWithCSS", false, true); }catch(_){}
+      if(!document.execCommand("hiliteColor", false, "#fde68a")) document.execCommand("backColor", false, "#fde68a");
+      try{ document.execCommand("styleWithCSS", false, false); }catch(_){}
+      area.querySelectorAll("span[style], font[style]").forEach(sp => {
+        if(/background/i.test(sp.getAttribute("style"))){ const mk = document.createElement("mark"); while(sp.firstChild) mk.appendChild(sp.firstChild); sp.replaceWith(mk); }
+      });
+    }
+  } else if(cmd==="removeFormat"){
+    document.execCommand("removeFormat");
+    const s = getSelection();
+    area.querySelectorAll("mark").forEach(mk => { if(s.containsNode && s.containsNode(mk, true)) unwrap(mk); });
+  } else {
+    document.execCommand(cmd, false, null);
+  }
+  if(area.id==="nt-area") notaDraft = area.innerHTML;
+  updateRteBars();
+}
+function updateRteBars(){
+  document.querySelectorAll(".rte-btn").forEach(b => {
+    const area = document.getElementById(b.dataset.for); if(!area) return;
+    let on = false;
+    if(selectionIn(area)){
+      if(b.dataset.rte==="mark") on = !!closestIn(area, "mark");
+      else if(b.dataset.rte!=="removeFormat"){ try{ on = document.queryCommandState(b.dataset.rte); }catch(_){} }
+    }
+    b.setAttribute("aria-pressed", String(on));
+  });
+}
+document.addEventListener("mousedown", e => { if(e.target.closest && e.target.closest(".rte-btn")) e.preventDefault(); });
+document.addEventListener("click", e => {
+  const b = e.target.closest && e.target.closest(".rte-btn"); if(!b) return;
+  const area = document.getElementById(b.dataset.for); if(area) rteCmd(b.dataset.rte, area);
+});
+document.addEventListener("selectionchange", updateRteBars);
+document.addEventListener("input", e => { if(e.target.id==="nt-area") notaDraft = e.target.innerHTML; });
+document.addEventListener("paste", e => {
+  const area = e.target.closest && e.target.closest(".rte-area"); if(!area) return;
+  e.preventDefault();
+  const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+  document.execCommand("insertText", false, text);
+});
+document.addEventListener("keydown", e => {
+  const area = e.target.closest && e.target.closest(".rte-area"); if(!area) return;
+  if((e.ctrlKey||e.metaKey) && e.shiftKey && (e.key==="h"||e.key==="H")){ e.preventDefault(); rteCmd("mark", area); }
+});
+
 function addNota(){
-  const t = document.getElementById("nt-texto"), err = document.getElementById("nt-err");
-  const texto = t.value.trim(), rawV = document.getElementById("nt-valor").value.trim();
+  const t = document.getElementById("nt-area"), err = document.getElementById("nt-err");
+  const html = sanitizeNote(t.innerHTML), texto = htmlToText(html).trim(), rawV = document.getElementById("nt-valor").value.trim();
   if(!texto){ err.textContent="Escreva a nota antes de adicionar."; err.hidden=false; t.focus(); return; }
   let valor = null;
   if(rawV){ valor = parseMoney(rawV); if(!isFinite(valor)){ err.textContent="Confira o valor, por exemplo 250,00."; err.hidden=false; return; } }
-  S.notas.push({id:uid("n"), tipo:document.getElementById("nt-tipo").value, texto, valor, feito:false, criada:hojeBR(), criadaTs:Date.now(), ciclo:S.ciclo||""});
+  notaDraft = "";
+  S.notas.push({id:uid("n"), tipo:document.getElementById("nt-tipo").value, texto, html, valor, feito:false, criada:hojeBR(), criadaTs:Date.now(), ciclo:S.ciclo||""});
   notaFiltro = "todas"; change();
 }
 function notaEditor(id){
   const n = {...S.notas.find(x=>x.id===id)};
-  openModal({html:()=>`<h2>Editar nota</h2>
-    <div class="field"><label for="ne-texto">Nota</label><textarea id="ne-texto">${esc(n.texto)}</textarea></div>
+  openModal({wide:true, noFocus:true, html:()=>`<h2>Editar nota</h2>
+    ${rteHTML("ne-area", notaHTML(n), "Escreva sua nota…")}
     <div class="two">
       <div class="field"><label for="ne-tipo">Tipo</label><select id="ne-tipo">${tipoOptions(n.tipo)}</select></div>
       <div class="field"><label for="ne-valor">Valor (opcional)</label><input id="ne-valor" inputmode="decimal" value="${moneyIn(n.valor)}"></div>
@@ -718,13 +860,14 @@ function notaEditor(id){
   bind(o){
     const g = x => o.querySelector("#"+x);
     g("ne-cancel").onclick = closeModal;
+    const area = g("ne-area"); area.focus(); placeCaretEnd(area);
     g("ne-del").onclick = () => { const b=g("ne-del"); if(b.dataset.sure){ S.notas=S.notas.filter(x=>x.id!==id); change(); closeModal(); } else { b.dataset.sure="1"; b.textContent="Confirmar exclusão"; } };
     g("ne-ok").onclick = () => {
-      const texto = g("ne-texto").value.trim(), rawV = g("ne-valor").value.trim(), err = g("ne-err");
+      const html = sanitizeNote(g("ne-area").innerHTML), texto = htmlToText(html).trim(), rawV = g("ne-valor").value.trim(), err = g("ne-err");
       if(!texto){ err.textContent="A nota não pode ficar vazia."; err.hidden=false; return; }
       let valor = null;
       if(rawV){ valor = parseMoney(rawV); if(!isFinite(valor)){ err.textContent="Confira o valor, por exemplo 250,00."; err.hidden=false; return; } }
-      S.notas = S.notas.map(x=>x.id===id?{...x, texto, tipo:g("ne-tipo").value, valor}:x);
+      S.notas = S.notas.map(x=>x.id===id?{...x, texto, html, tipo:g("ne-tipo").value, valor}:x);
       change(); closeModal();
     };
   }});
@@ -850,7 +993,7 @@ function renderModal(){
   let o = document.getElementById("ov");
   if(!o){ o = document.createElement("div"); o.id="ov"; o.className="overlay"; document.body.appendChild(o);
     o.addEventListener("click", e=>{ if(e.target===o) closeModal(); }); }
-  o.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${modal.html()}</div>`;
+  o.innerHTML = `<div class="sheet ${modal.wide?"wide":""}" role="dialog" aria-modal="true">${modal.html()}</div>`;
   modal.bind && modal.bind(o);
   const f = o.querySelector("input,select,textarea"); if(f && !modal.noFocus) f.focus();
 }
