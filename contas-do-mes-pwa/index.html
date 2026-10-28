@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Contas do Mês</title>
+<meta name="description" content="Organize as contas a pagar pelo dia em que você recebe.">
+<meta name="theme-color" content="#f3f5f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1117" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Contas">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style id="main-style">
+*,*::before,*::after{box-sizing:border-box}
+html{color-scheme:light}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+body{margin:0}
+[hidden]{display:none!important}
+img{max-width:100%}
+/* Layout: faixa de resultado no topo, depois dois blocos lado a lado (o que sai do dinheiro do dia 05 e do dia 20), cartões e saldos embaixo */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --ink:#151a24; --muted:#5d6676; --line:#dfe3ea;
+  --accent:#2747c9; --accent-soft:#e6ebfb;
+  --good:#127a4b; --good-soft:#e1f3ea; --bad:#b4232e; --bad-soft:#fbe6e7; --warn:#9a5b00; --warn-soft:#fbefd9;
+  --f-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --f-body:"Figtree",ui-sans-serif,system-ui,sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1117; --surface:#171b24; --ink:#e8ebf1; --muted:#98a1b2; --line:#2a303c;
+  --accent:#8ea2ff; --accent-soft:#1e2643;
+  --good:#5fd39a; --good-soft:#15291f; --bad:#ff7b84; --bad-soft:#2f1619; --warn:#f2b64c; --warn-soft:#2c2212; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1117; --surface:#171b24; --ink:#e8ebf1; --muted:#98a1b2; --line:#2a303c;
+  --accent:#8ea2ff; --accent-soft:#1e2643;
+  --good:#5fd39a; --good-soft:#15291f; --bad:#ff7b84; --bad-soft:#2f1619; --warn:#f2b64c; --warn-soft:#2c2212; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+#app{max-width:1060px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 64px;display:grid;gap:22px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
+h1{font-size:30px;font-weight:700;letter-spacing:-.01em}
+h2{font-size:19px;font-weight:700}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums;white-space:nowrap}
+.label{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 13px;font-weight:600;font-size:14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn.danger{color:var(--bad)}
+.btn.ghost{border-color:transparent;background:transparent;padding:6px 8px;color:var(--muted)}
+.btn.ghost:hover{color:var(--accent)}
+
+/* topo */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+.cycle{display:flex;align-items:center;gap:8px;margin-top:4px;color:var(--muted)}
+.cycle input{min-width:0;font:inherit;color:var(--ink);background:transparent;border:1px dashed var(--line);border-radius:6px;padding:3px 8px;width:180px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* faixa de resultado */
+.result{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.result>div{padding:14px 16px;display:grid;gap:4px;border-left:1px solid var(--line)}
+.result>div:first-child{border-left:0}
+.result .v{font-family:var(--f-num);font-size:21px;font-weight:500;font-variant-numeric:tabular-nums}
+.result .sub{font-size:12.5px;color:var(--muted)}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+@media (max-width:720px){.result{grid-template-columns:1fr 1fr}.result>div:nth-child(3){border-left:0}.result>div:nth-child(n+3){border-top:1px solid var(--line)}}
+
+/* blocos de pagamento */
+.days{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+@media (max-width:760px){.days{grid-template-columns:1fr}}
+.day{background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column}
+.day>.list{flex:1 1 auto}
+.day>.day-foot{margin-top:auto}
+.day-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 16px 12px}
+.day-head .big{font-family:var(--f-display);font-size:38px;font-weight:700;line-height:1;color:var(--accent)}
+.income{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 16px;padding:10px 12px;border-radius:8px;background:var(--accent-soft)}
+.income button{background:none;border:0;padding:0;text-align:left}
+.list{list-style:none;margin:8px 0 0;padding:0}
+.bill{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px 16px;border-top:1px solid var(--line)}
+.bill:first-child{border-top:0}
+.chk{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--muted);background:transparent;display:grid;place-items:center;padding:0}
+.chk[aria-pressed="true"]{background:var(--good);border-color:var(--good)}
+.chk svg{width:13px;height:13px;stroke:var(--surface);stroke-width:3;fill:none;opacity:0}
+.chk[aria-pressed="true"] svg{opacity:1}
+.bill-main{min-width:0;background:none;border:0;padding:0;text-align:left;display:grid;gap:3px}
+.bill-name{font-weight:600;overflow-wrap:anywhere}
+.bill.paid .bill-name,.bill.paid .bill-val{text-decoration:line-through;color:var(--muted)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.chip{font-size:11px;font-weight:600;letter-spacing:.03em;padding:2px 7px;border-radius:999px;background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.chip.late{background:var(--bad-soft);color:var(--bad);border-color:transparent}
+.chip.est{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.bill-val{text-align:right}
+.day-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);font-weight:600}
+.day-foot .num{font-size:17px}
+.day-foot .left{font-size:12.5px;color:var(--muted);font-weight:500}
+.empty{padding:14px 16px;color:var(--muted);font-size:14px}
+
+/* cartões e saldos */
+.lower{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+@media (max-width:760px){.lower{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:grid;gap:14px;align-content:start}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.card-row{display:grid;gap:7px}
+.card-row .line{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.bar{height:8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);border-radius:999px}
+.bar>i.hot{background:var(--bad)}
+.small{font-size:12.5px;color:var(--muted)}
+.rows{display:grid;gap:0}
+.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);align-items:baseline}
+.row:first-child{border-top:0}
+.row button{background:none;border:0;padding:0;text-align:left;min-width:0}
+.row.total{font-weight:600}
+.group-label{margin-top:4px}
+
+/* assinaturas */
+.subs-list{list-style:none;margin:0;padding:0;display:grid}
+.sub-row{border-top:1px solid var(--line)}
+.sub-row:first-child{border-top:0}
+.bar{display:flex}
+.bar>i.future{background:var(--accent);opacity:.35;border-radius:0 999px 999px 0}
+.bar>i+i{margin-left:1px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px}
+.legend span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--accent);vertical-align:0}
+.legend span.f::before{opacity:.35}
+.sub-row button{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;align-items:center;background:none;border:0;padding:10px 0;text-align:left}
+.sub-name{font-weight:600;overflow-wrap:anywhere}
+.sub-row .meta{grid-column:1/-1}
+.chip.card{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.chip.nocard{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+
+/* visão geral */
+.ov-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+@media (max-width:760px){.ov-grid{grid-template-columns:1fr}}
+.verdict{display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.verdict .dot{width:14px;height:14px;border-radius:50%;margin-top:6px}
+.verdict p{margin:4px 0 0;color:var(--muted)}
+.pill{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.st-good{background:var(--good-soft);color:var(--good)} .st-warn{background:var(--warn-soft);color:var(--warn)} .st-bad{background:var(--bad-soft);color:var(--bad)} .st-none{background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.dot.st-good{background:var(--good)} .dot.st-warn{background:var(--warn)} .dot.st-bad{background:var(--bad)}
+.kpi{display:grid;gap:2px}
+.kpi .v{font-family:var(--f-num);font-size:24px;font-weight:500;font-variant-numeric:tabular-nums}
+.ov-lines{display:grid}
+.ov-lines .row span:first-child{color:var(--muted)}
+.meter{display:grid;gap:6px}
+.meter .bar{height:10px}
+.meter .bar>i.good{background:var(--good)} .meter .bar>i.warn{background:var(--warn)} .meter .bar>i.bad{background:var(--bad)}
+.meter .line{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.tick-wrap{position:relative}
+.tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.55;border-radius:1px}
+.ends{list-style:none;margin:0;padding:0;display:grid}
+.ends li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.ends li:first-child{border-top:0}
+.disclaimer{font-size:12.5px;color:var(--muted)}
+
+/* editor */
+.overlay{position:fixed;inset:0;background:rgb(10 12 18 / .45);display:grid;place-items:center;padding:16px;z-index:20}
+.sheet{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;width:min(460px,100%);max-height:calc(100% - 32px);overflow:auto;padding:20px;display:grid;gap:14px}
+.field{display:grid;gap:5px}
+.field label{font-size:13px;font-weight:600;color:var(--muted)}
+.field input,.field select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;box-sizing:border-box}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sheet-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
+.sheet-actions>div{display:flex;gap:8px}
+.check{display:flex;gap:8px;align-items:center;font-size:14px}
+.note{font-size:13px;color:var(--muted)}
+.err{color:var(--bad);font-size:13px}
+textarea.export{width:100%;box-sizing:border-box;min-height:300px;font-family:var(--f-num);font-size:12.5px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+
+/* salvar */
+.savebar{position:sticky;bottom:0;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 12px 10px 16px;margin-bottom:env(safe-area-inset-bottom,0px)}
+.savebar .btn{background:var(--bg);color:var(--ink);border-color:var(--bg)}
+@media (prefers-reduced-motion:no-preference){.bar>i{transition:width .3s}}
+</style>
+</head>
+<body>
+<div id="app"><p class="empty">Carregando suas contas…</p></div>
+
+<script type="application/json" id="state">{"v":1,"ciclo":"","receitas":[],"contas":[],"cartoes":[],"conta":[],"guardado":[],"rendimento":0,"assinaturas":[],"parcelamentos":[],"metas":{"gastoMax":null,"economia":null,"reserva":null}}</script>
+
+<script id="main-script">
+(function(){
+"use strict";
+const _unused = ":root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}";
+const $app = document.getElementById("app");
+const KEY = "contas-do-mes-v1";
+let S = JSON.parse(document.getElementById("state").textContent);
+let storageOk = true;
+try{ const saved = localStorage.getItem(KEY); if(saved) S = Object.assign(S, JSON.parse(saved)); }catch(_){ storageOk = false; }
+if(!Array.isArray(S.assinaturas)) S.assinaturas = [];
+if(!Array.isArray(S.parcelamentos)) S.parcelamentos = [];
+if(!S.metas || typeof S.metas!=="object") S.metas = {gastoMax:null, economia:null, reserva:null};
+let view = "contas";
+try{ if(sessionStorage.getItem("contas-view")==="geral") view="geral"; }catch(_){}
+const restante = p => Math.max(0,(p.parcelas||0)-(p.atual||0))*(Number(p.valor)||0);
+let dirty = false, saving = false, saveMsg = "", modal = null, artifactApi = undefined;
+
+const fmt = new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"});
+const brl = v => fmt.format(Math.round((v||0)*100)/100);
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dd = n => n==null?"—":String(n).padStart(2,"0");
+const uid = p => p + Math.random().toString(36).slice(2,8);
+function parseMoney(str){
+  if(typeof str==="number") return str;
+  let s = String(str||"").replace(/[R$\s]/g,"");
+  if(!s) return NaN;
+  if(s.includes(",")) s = s.replace(/\./g,"").replace(",",".");
+  return Number(s);
+}
+const moneyIn = v => v==null||v===""?"":String(v.toFixed?v.toFixed(2):v).replace(".",",");
+
+/* ---------- contas ---------- */
+const sum = a => a.reduce((t,x)=>t+(Number(x.valor)||0),0);
+function totals(){
+  const entra = sum(S.receitas), sai = sum(S.contas);
+  const res = entra - sai;
+  const reserva = sum(S.conta) + sum(S.guardado);
+  const pendente = sum(S.contas.filter(c=>!c.pago));
+  return {entra, sai, res, reserva, comReserva: res + reserva, pendente};
+}
+function dayBlock(dia){
+  const rec = S.receitas.filter(r=>r.dia===dia);
+  const contas = S.contas.filter(c=>c.pagaCom===dia).sort((a,b)=>(b.atrasado?1:0)-(a.atrasado?1:0) || (a.dia??99)-(b.dia??99));
+  const entra = sum(rec), sai = sum(contas);
+  return {rec, contas, entra, sai, sobra: entra - sai, falta: sum(contas.filter(c=>!c.pago))};
+}
+const payDays = () => [...new Set(S.receitas.map(r=>r.dia))].sort((a,b)=>a-b);
+
+function chipsFor(c){
+  const out = [];
+  if(c.atrasado) out.push('<span class="chip late">Atrasado</span>');
+  if(c.estimado) out.push(`<span class="chip est">Estimado${c.min!=null&&c.max!=null?` · ${brl(c.min)}–${brl(c.max)}`:""}</span>`);
+  if(c.tipo==="parcelado" && c.parcelas) out.push(`<span class="chip">Parcela ${Math.min((c.pagas||0)+1,c.parcelas)}/${c.parcelas}</span>`);
+  if(c.tipo==="cartao") out.push('<span class="chip">Fatura</span>');
+  return out.join("");
+}
+const check = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
+
+/* ---------- render ---------- */
+function render(){
+  const t = totals();
+  const days = payDays();
+  // contas cujo dia de pagamento não tem recebimento
+  const orphan = S.contas.filter(c=>!days.includes(c.pagaCom));
+  let h = `
+  <header class="top">
+    <div>
+      <h1>Contas do Mês</h1>
+      <div class="cycle"><label for="ciclo" class="label">Mês</label><input id="ciclo" value="${esc(S.ciclo)}" placeholder="ex.: Novembro"></div>
+    </div>
+    <div class="actions">
+      <button class="btn ${view==="geral"?"primary":""}" data-act="toggle-view">${view==="geral"?"Voltar às contas":"Visão geral"}</button>
+      ${view==="geral"?'<button class="btn" data-act="metas">Editar metas</button>':'<button class="btn" data-act="new">+ Nova conta</button><button class="btn" data-act="new-rec">+ Recebimento</button>'}
+      <button class="btn" data-act="export">Copiar como bloco de notas</button>
+      <button class="btn" data-act="close">Fechar mês</button>
+      <button class="btn" data-act="backup">Backup</button>
+    </div>
+  </header>`;
+  if(view==="geral"){ h += overviewHTML(); finish(h); return; }
+  h += `
+  <section class="result" aria-label="Resumo do mês">
+    <div><span class="label">Entra no mês</span><span class="v">${brl(t.entra)}</span><span class="sub">${days.map(d=>"dia "+dd(d)).join(" + ")}</span></div>
+    <div><span class="label">Sai no mês</span><span class="v">${brl(t.sai)}</span><span class="sub">${brl(t.pendente)} ainda a pagar</span></div>
+    <div><span class="label">${t.res>=0?"Sobra":"Falta"}</span><span class="v ${t.res>=0?"pos":"neg"}">${brl(Math.abs(t.res))}</span><span class="sub">só com o que entra</span></div>
+    <div><span class="label">${t.comReserva>=0?"Sobra":"Falta"} usando saldos</span><span class="v ${t.comReserva>=0?"pos":"neg"}">${brl(Math.abs(t.comReserva))}</span><span class="sub">conta + guardado: ${brl(t.reserva)}</span></div>
+  </section>
+
+  <section class="days">`;
+  if(!days.length){
+    h += `<div class="panel" style="grid-column:1/-1"><h2>Comece pelos recebimentos</h2>
+      <p class="note" style="margin:0">Cadastre os dias em que você recebe (salário, adiantamento, etc.). Cada recebimento vira um bloco "Pagar no dia" e você escolhe quais contas saem de cada um. Os seus dados ficam só neste aparelho.</p>
+      <div><button class="btn primary" data-act="new-rec">+ Recebimento</button></div></div>`;
+  }
+  for(const d of days){
+    const b = dayBlock(d);
+    h += `<article class="day" aria-label="Pagamentos com o dinheiro do dia ${dd(d)}">
+      <div class="day-head"><h2>Pagar no dia</h2><span class="big">${dd(d)}</span></div>
+      ${b.rec.map(r=>`<div class="income"><button data-edit-rec="${r.id}"><span class="label">${esc(r.nome)}</span></button><span class="num">+ ${brl(r.valor)}</span></div>`).join("")}
+      <ul class="list">${b.contas.length?b.contas.map(billRow).join(""):`<li class="empty">Nenhuma conta sai deste dinheiro.</li>`}</ul>
+      <div class="day-foot"><div>${b.sobra>=0?"Sobra":"Falta"}<div class="left">${b.falta>0?brl(b.falta)+" pendente":"tudo pago"}</div></div><span class="num ${b.sobra>=0?"pos":"neg"}">${b.sobra>=0?"":"− "}${brl(Math.abs(b.sobra))}</span></div>
+    </article>`;
+  }
+  h += `</section>`;
+  if(orphan.length){
+    h += `<section class="day"><div class="day-head"><h2>Sem dia de pagamento definido</h2></div><ul class="list">${orphan.map(billRow).join("")}</ul></section>`;
+  }
+
+  // assinaturas
+  const subsTotal = sum(S.assinaturas);
+  const semValor = S.assinaturas.filter(a=>a.valor==null).length;
+  h += `<section class="lower"><div class="panel" aria-label="Assinaturas"><div class="panel-head"><div><h2>Assinaturas</h2>
+      <div class="small">${S.assinaturas.length} ativa(s)${S.assinaturas.length?` · ${brl(subsTotal)}/mês${semValor?` (${semValor} sem valor)`:""}`:""} · já entram na fatura do cartão</div></div>
+      <button class="btn ghost" data-act="new-sub">+ Assinatura</button></div>
+    ${S.assinaturas.length?`<ul class="subs-list">${S.assinaturas.map(subRow).join("")}</ul>`:'<p class="note">Nenhuma assinatura cadastrada.</p>'}
+  </div>`;
+
+  // parcelados no cartão
+  const parcMes = sum(S.parcelamentos), parcFut = S.parcelamentos.reduce((t,p)=>t+restante(p),0);
+  h += `<div class="panel" aria-label="Parcelados no cartão"><div class="panel-head"><div><h2>Parcelados no cartão</h2>
+      <div class="small">${S.parcelamentos.length?`${brl(parcMes)} nesta fatura · ${brl(parcFut)} nas próximas`:"compras parceladas que já entram na fatura"}</div></div>
+      <button class="btn ghost" data-act="new-parc">+ Parcelado</button></div>
+    ${S.parcelamentos.length?`<ul class="subs-list">${S.parcelamentos.map(parcRow).join("")}</ul>`:'<p class="note">Nenhuma compra parcelada cadastrada.</p>'}
+  </div></section>`;
+
+  // cartões
+  h += `<section class="lower"><div class="panel"><div class="panel-head"><h2>Cartões</h2><button class="btn ghost" data-act="new-card">+ Cartão</button></div>`;
+  if(!S.cartoes.length) h += `<p class="note">Nenhum cartão cadastrado.</p>`;
+  for(const c of S.cartoes){
+    const fatura = sum(S.contas.filter(x=>x.tipo==="cartao"&&x.cartao===c.id));
+    const futuro = S.parcelamentos.filter(p=>p.cartao===c.id).reduce((t,p)=>t+restante(p),0);
+    const pct = c.limite>0 ? Math.min(100, fatura/c.limite*100) : 0;
+    const pctF = c.limite>0 ? Math.min(100-pct, futuro/c.limite*100) : 0;
+    const usado = pct + pctF;
+    h += `<div class="card-row"><div class="line"><button class="btn ghost" style="padding:0;color:var(--ink);font-weight:600" data-edit-card="${c.id}">${esc(c.nome)}</button><span class="num">${brl(fatura)} <span class="small">de ${brl(c.limite)}</span></span></div>
+      <div class="bar" role="img" aria-label="${Math.round(usado)}% do limite comprometido"><i class="${usado>=80?"hot":""}" style="width:${pct.toFixed(1)}%"></i>${futuro>0?`<i class="future" style="width:${pctF.toFixed(1)}%"></i>`:""}</div>
+      ${futuro>0?`<div class="legend small"><span>${brl(fatura)} na fatura</span><span class="f">${brl(futuro)} em parcelas futuras</span></div>`:""}
+      <div class="line small"><span>${Math.round(usado)}% do limite ${futuro>0?"comprometido":"na fatura"}${(n=>n?` · ${n} assinatura${n>1?"s":""}`:"")(S.assinaturas.filter(a=>a.cartao===c.id).length)}</span><span class="num">${brl(Math.max(0,c.limite-fatura-futuro))} livre</span></div></div>`;
+  }
+  h += `</div>`;
+
+  // saldos
+  const sg = sum(S.guardado);
+  h += `<div class="panel"><div class="panel-head"><h2>Saldos</h2><button class="btn ghost" data-act="new-saldo">+ Saldo</button></div>
+    <div class="label group-label">Parado em conta</div><div class="rows">
+    ${S.conta.map(s=>`<div class="row"><button data-edit-saldo="conta:${s.id}">${esc(s.nome)}</button><span class="num">${brl(s.valor)}</span></div>`).join("")||'<p class="note">Nada cadastrado.</p>'}
+    </div>
+    <div class="label group-label">Guardado</div><div class="rows">
+    ${S.guardado.map(s=>`<div class="row"><button data-edit-saldo="guardado:${s.id}">${esc(s.nome)}${s.taxa?` <span class="small">${esc(s.taxa)}</span>`:""}</button><span class="num">${brl(s.valor)}</span></div>`).join("")}
+    <div class="row total"><span>Total guardado</span><span class="num">${brl(sg)}</span></div>
+    <div class="row"><button data-act="rend">Rendimento</button><span class="num pos">+ ${brl(S.rendimento)}</span></div>
+    </div></div></section>`;
+
+  finish(h);
+}
+function finish(h){
+  if(saveMsg){
+    h += `<div class="savebar" role="status"><span>${esc(saveMsg)}</span><button class="btn" data-act="backup">Backup</button></div>`;
+  }
+  $app.innerHTML = h;
+  if(modal) renderModal();
+}
+/* ---------- visão geral ---------- */
+function statusOf(v, okMax, warnMax){ return v<=okMax?"good":v<=warnMax?"warn":"bad"; }
+const ST_LABEL = {good:"Tranquilo", warn:"Atenção", bad:"Crítico", none:"Sem meta"};
+const pctTxt = v => (isFinite(v)?Math.round(v):0) + "%";
+function meter(pct, st, tickPct){
+  const w = Math.max(0,Math.min(100,pct));
+  return `<div class="tick-wrap"><div class="bar"><i class="${st}" style="width:${w.toFixed(1)}%"></i></div>${tickPct!=null?`<span class="tick" style="left:calc(${Math.min(100,tickPct)}% - 1px)" aria-hidden="true"></span>`:""}</div>`;
+}
+function overviewHTML(){
+  if(!S.receitas.length && !S.contas.length) return `<div class="panel"><h2>Ainda não há dados</h2><p class="note" style="margin:0">Cadastre seus recebimentos e contas para ver a visão geral.</p><div><button class="btn" data-act="toggle-view">Voltar às contas</button></div></div>`;
+  const t = totals();
+  const renda = t.entra || 0;
+  // contas x renda
+  const contasPct = renda>0 ? t.sai/renda*100 : 0;
+  const stContas = statusOf(contasPct, 85, 100);
+  // dívidas
+  const emprest = S.contas.filter(c=>c.tipo==="parcelado"&&c.parcelas);
+  const emprestRest = emprest.reduce((s,c)=>s+Math.max(0,c.parcelas-(c.pagas||0))*c.valor,0);
+  const faturas = sum(S.contas.filter(c=>c.tipo==="cartao"));
+  const parcFut = S.parcelamentos.reduce((s,p)=>s+restante(p),0);
+  const dividaTotal = emprestRest + faturas + parcFut;
+  const parcelasMes = sum(emprest) + sum(S.parcelamentos);
+  const parcPct = renda>0 ? parcelasMes/renda*100 : 0;
+  const stParc = statusOf(parcPct, 30, 40);
+  const mesesRenda = renda>0 ? dividaTotal/renda : 0;
+  // cartões
+  const limTotal = S.cartoes.reduce((s,c)=>s+(Number(c.limite)||0),0);
+  const cardPct = limTotal>0 ? (faturas+parcFut)/limTotal*100 : 0;
+  const stCard = statusOf(cardPct, 50, 80);
+  // reserva
+  const reserva = t.reserva;
+  const coberturaMeses = t.sai>0 ? reserva/t.sai : 0;
+  const rendPct = sum(S.guardado)>0 ? (Number(S.rendimento)||0)/sum(S.guardado)*100 : 0;
+  // endividado?
+  const endividado = t.res < 0 || cardPct > 80 || parcPct > 40;
+  const stGeral = (t.comReserva < 0 || contasPct > 100) ? "bad" : (endividado || stContas!=="good" || stParc!=="good") ? "warn" : "good";
+  const frase = stGeral==="bad"
+    ? `As contas deste mês passam do que você recebe em ${brl(Math.abs(t.res))}${t.comReserva<0?`, e mesmo usando os saldos ainda faltam ${brl(Math.abs(t.comReserva))}`:`. Os saldos cobrem a diferença, mas a reserva cai`}.`
+    : stGeral==="warn" ? "As contas cabem na renda, mas algum indicador abaixo está perto do limite." : "As contas cabem na renda e os indicadores estão em faixa tranquila.";
+
+  // metas
+  const M = S.metas;
+  const metaRows = [];
+  if(M.gastoMax!=null){ const p=M.gastoMax>0?t.sai/M.gastoMax*100:0; const st=p<=100?(p<=90?"good":"warn"):"bad";
+    metaRows.push(`<div class="meter"><div class="line"><span>Gastos do mês</span><span class="pill st-${st}">${st==="bad"?"Acima":"Dentro"}</span></div>${meter(p,st)}<div class="line small"><span class="num">${brl(t.sai)} de ${brl(M.gastoMax)}</span><span>${st==="bad"?brl(t.sai-M.gastoMax)+" acima":brl(M.gastoMax-t.sai)+" de folga"}</span></div></div>`); }
+  if(M.economia!=null){ const sob=Math.max(0,t.res); const p=M.economia>0?sob/M.economia*100:100; const st=p>=100?"good":p>=50?"warn":"bad";
+    metaRows.push(`<div class="meter"><div class="line"><span>Guardar por mês</span><span class="pill st-${st}">${st==="good"?"Atingível":st==="warn"?"Parcial":"Fora"}</span></div>${meter(p,st)}<div class="line small"><span class="num">sobra ${brl(t.res)} · meta ${brl(M.economia)}</span><span>${t.res>=M.economia?"dá para guardar a meta":"faltam "+brl(M.economia-Math.max(0,t.res))}</span></div></div>`); }
+  if(M.reserva!=null){ const p=M.reserva>0?reserva/M.reserva*100:0; const st=p>=100?"good":p>=50?"warn":"bad";
+    metaRows.push(`<div class="meter"><div class="line"><span>Reserva guardada</span><span class="pill st-${st}">${pctTxt(p)}</span></div>${meter(p,st)}<div class="line small"><span class="num">${brl(reserva)} de ${brl(M.reserva)}</span><span>${p>=100?"meta alcançada":"faltam "+brl(M.reserva-reserva)}</span></div></div>`); }
+
+  // quando as parcelas acabam
+  const ends = [
+    ...emprest.map(c=>({nome:c.nome, n:Math.max(0,c.parcelas-(c.pagas||0)), v:c.valor})),
+    ...S.parcelamentos.map(p=>({nome:p.nome, n:Math.max(0,(p.parcelas||0)-(p.atual||0)+1), v:p.valor}))
+  ].sort((a,b)=>a.n-b.n);
+
+  return `
+  <section class="verdict" aria-label="Situação geral"><span class="dot st-${stGeral}" aria-hidden="true"></span>
+    <div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><h2>${stGeral==="bad"?"Mais contas do que renda":stGeral==="warn"?"No limite":"Situação equilibrada"}</h2><span class="pill st-${stGeral}">${ST_LABEL[stGeral]}</span></div>
+    <p>${frase}</p></div>
+  </section>
+
+  <section class="ov-grid">
+    <div class="panel"><div class="panel-head"><h2>Contas x renda</h2><span class="pill st-${stContas}">${ST_LABEL[stContas]}</span></div>
+      <div class="kpi"><span class="v ${contasPct>100?"neg":""}">${pctTxt(contasPct)}</span><span class="small">da renda vai para as contas deste mês</span></div>
+      <div class="meter">${meter(contasPct, stContas, 100)}<div class="line small"><span>0%</span><span>100% = toda a renda</span></div></div>
+      <div class="ov-lines rows">
+        <div class="row"><span>Entra</span><span class="num">${brl(renda)}</span></div>
+        <div class="row"><span>Sai</span><span class="num">${brl(t.sai)}</span></div>
+        <div class="row total"><span>${t.res>=0?"Sobra":"Falta"}</span><span class="num ${t.res>=0?"pos":"neg"}">${brl(Math.abs(t.res))}</span></div>
+      </div>
+    </div>
+
+    <div class="panel"><div class="panel-head"><h2>Endividamento</h2><span class="pill st-${endividado?(stParc==="bad"||cardPct>80?"bad":"warn"):"good"}">${endividado?"Endividado":"Sob controle"}</span></div>
+      <div class="kpi"><span class="v">${brl(dividaTotal)}</span><span class="small">ainda a pagar no total · ${mesesRenda.toFixed(1).replace(".",",")} meses de renda</span></div>
+      <div class="ov-lines rows">
+        <div class="row"><span>Faturas atuais</span><span class="num">${brl(faturas)}</span></div>
+        <div class="row"><span>Parcelas futuras no cartão</span><span class="num">${brl(parcFut)}</span></div>
+        <div class="row"><span>Empréstimo (restante)</span><span class="num">${brl(emprestRest)}</span></div>
+      </div>
+      <div class="meter"><div class="line"><span>Parcelas fixas por mês</span><span class="num">${brl(parcelasMes)} · ${pctTxt(parcPct)} da renda</span></div>${meter(parcPct/0.6, stParc, 50)}<div class="line small"><span>referência comum: até 30%</span><span class="pill st-${stParc}">${ST_LABEL[stParc]}</span></div></div>
+    </div>
+
+    <div class="panel"><div class="panel-head"><h2>Limite dos cartões</h2><span class="pill st-${stCard}">${ST_LABEL[stCard]}</span></div>
+      <div class="kpi"><span class="v">${pctTxt(cardPct)}</span><span class="small">do limite total comprometido (${brl(faturas+parcFut)} de ${brl(limTotal)})</span></div>
+      ${S.cartoes.map(c=>{ const f=sum(S.contas.filter(x=>x.tipo==="cartao"&&x.cartao===c.id)), fu=S.parcelamentos.filter(p=>p.cartao===c.id).reduce((s,p)=>s+restante(p),0); const p=c.limite>0?(f+fu)/c.limite*100:0; const st=statusOf(p,50,80);
+        return `<div class="meter"><div class="line"><span>${esc(c.nome)}</span><span class="num small">${pctTxt(p)} · ${brl(Math.max(0,c.limite-f-fu))} livre</span></div>${meter(p,st)}</div>`; }).join("")}
+    </div>
+
+    <div class="panel"><div class="panel-head"><h2>Economia e rendimentos</h2><span class="pill st-${coberturaMeses>=1?"good":reserva>0?"warn":"bad"}">${coberturaMeses>=1?"Com reserva":reserva>0?"Reserva baixa":"Sem reserva"}</span></div>
+      <div class="kpi"><span class="v">${brl(reserva)}</span><span class="small">guardado + em conta · cobre ${pctTxt(coberturaMeses*100)} das contas de um mês</span></div>
+      <div class="ov-lines rows">
+        <div class="row"><span>Guardado</span><span class="num">${brl(sum(S.guardado))}</span></div>
+        <div class="row"><span>Rendimento do mês</span><span class="num pos">+ ${brl(S.rendimento)}</span></div>
+        <div class="row"><span>Rendimento sobre o guardado</span><span class="num">${rendPct.toFixed(2).replace(".",",")}% no mês</span></div>
+      </div>
+    </div>
+
+    <div class="panel"><div class="panel-head"><h2>Planejamento</h2><button class="btn ghost" data-act="metas">${(M.gastoMax??M.economia??M.reserva)!=null?"Editar metas":"+ Definir metas"}</button></div>
+      ${metaRows.length?metaRows.join(""):`<p class="note">Defina quanto quer gastar no máximo por mês, quanto quer guardar e o tamanho da reserva que quer ter. A página compara com os números do mês.</p>`}
+    </div>
+
+    <div class="panel"><div class="panel-head"><h2>Quando as parcelas acabam</h2></div>
+      ${ends.length?`<ul class="ends">${ends.map(e=>`<li><span>${esc(e.nome)}</span><span class="num small">${e.n<=1?"última parcela":e.n+" parcelas"} · ${brl(e.v)}/mês</span></li>`).join("")}</ul>`:'<p class="note">Nenhuma parcela em andamento.</p>'}
+    </div>
+  </section>
+  <p class="disclaimer">Os indicadores usam faixas de referência comuns (como até 30% da renda em parcelas). São uma ajuda para enxergar a situação, não uma recomendação financeira.</p>`;
+}
+function recEditor(){
+  simpleEditor({title:"Novo recebimento", fields:[
+    {id:"r-nome",key:"nome",label:"Nome",value:"Recebimento",required:true},
+    {id:"r-dia",key:"dia",label:"Dia que cai",value:"",int:true},
+    {id:"r-val",key:"valor",label:"Valor (R$)",value:"",money:true}],
+    onSave:v=>S.receitas.push({id:uid("r"),...v})});
+}
+function backupDialog(){
+  openModal({noFocus:true, html:()=>`<h2>Backup</h2>
+    <p class="note">Os dados ficam salvos só neste navegador. Exporte um backup de vez em quando, e use-o para levar os dados para outro aparelho.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="btn primary" id="bk-exp">Exportar backup</button><label class="btn" for="bk-imp" style="display:inline-block">Importar backup</label><input type="file" id="bk-imp" accept="application/json,.json" hidden></div>
+    <p class="note" id="bk-msg"></p>
+    <div style="border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px"><span class="note">Apagar todos os dados deste aparelho:</span><div><button class="btn danger" id="bk-del">Apagar tudo</button></div></div>
+    <div class="sheet-actions"><div></div><div><button class="btn" id="bk-close">Fechar</button></div></div>`,
+  bind(o){
+    const g = id => o.querySelector("#"+id), msg = g("bk-msg");
+    g("bk-close").onclick = closeModal;
+    g("bk-exp").onclick = () => {
+      const blob = new Blob([JSON.stringify(S,null,1)], {type:"application/json"});
+      const a = document.createElement("a"); const d = new Date();
+      a.href = URL.createObjectURL(blob);
+      a.download = `contas-do-mes-${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+      msg.textContent = "Backup baixado.";
+    };
+    g("bk-imp").onchange = e => {
+      const f = e.target.files && e.target.files[0]; if(!f) return;
+      const r = new FileReader();
+      r.onload = () => {
+        try{
+          const data = JSON.parse(r.result);
+          if(!data || !Array.isArray(data.receitas) || !Array.isArray(data.contas)) throw 0;
+          S = Object.assign(JSON.parse(document.getElementById("state").textContent), data);
+          if(!S.metas) S.metas = {gastoMax:null,economia:null,reserva:null};
+          change(); closeModal();
+        }catch(_){ msg.textContent = "Esse arquivo não é um backup desta ferramenta."; }
+      };
+      r.readAsText(f);
+    };
+    g("bk-del").onclick = () => {
+      const b = g("bk-del");
+      if(b.dataset.sure){ S = JSON.parse(document.getElementById("state").textContent); change(); closeModal(); }
+      else { b.dataset.sure = "1"; b.textContent = "Confirmar: apagar tudo"; msg.textContent = "Isso não pode ser desfeito. Exporte um backup antes se quiser guardar."; }
+    };
+  }});
+}
+function metasEditor(){
+  const M = S.metas;
+  const f = (id,label,val,ph) => `<div class="field"><label for="${id}">${label}</label><input id="${id}" inputmode="decimal" value="${moneyIn(val)}" placeholder="${ph}"></div>`;
+  openModal({html:()=>`<h2>Metas do mês</h2>
+    <p class="note">Deixe em branco o que não quiser acompanhar.</p>
+    ${f("mt-gasto","Gastar no máximo por mês (R$)",M.gastoMax,"ex.: 4.500,00")}
+    ${f("mt-eco","Guardar por mês (R$)",M.economia,"ex.: 300,00")}
+    ${f("mt-res","Reserva que quero ter (R$)",M.reserva,"ex.: 5.000,00")}
+    <p class="err" id="mt-err" hidden></p>
+    <div class="sheet-actions"><div></div><div><button class="btn" id="mt-cancel">Cancelar</button><button class="btn primary" id="mt-ok">Salvar metas</button></div></div>`,
+  bind(o){
+    const g = id => o.querySelector("#"+id);
+    g("mt-cancel").onclick = closeModal;
+    g("mt-ok").onclick = () => {
+      const read = id => { const r=g(id).value.trim(); if(!r) return null; const n=parseMoney(r); return isFinite(n)?n:NaN; };
+      const v = {gastoMax:read("mt-gasto"), economia:read("mt-eco"), reserva:read("mt-res")};
+      if(Object.values(v).some(x=>Number.isNaN(x))){ const e=g("mt-err"); e.textContent="Confira os valores, por exemplo 300,00."; e.hidden=false; return; }
+      S.metas = v; change(); closeModal();
+    };
+  }});
+}
+
+function billRow(c){
+  return `<li class="bill ${c.pago?"paid":""}">
+    <button class="chk" aria-pressed="${!!c.pago}" aria-label="Marcar ${esc(c.nome)} como ${c.pago?"pendente":"paga"}" data-toggle="${c.id}">${check}</button>
+    <button class="bill-main" data-edit="${c.id}"><span class="bill-name">${esc(c.nome)}</span>
+      <span class="meta"><span>${esc(c.grupo||"")}${c.dia?` · vence dia ${dd(c.dia)}`:""}</span>${chipsFor(c)}</span></button>
+    <span class="num bill-val">${brl(c.valor)}</span></li>`;
+}
+
+function subRow(a){
+  const card = S.cartoes.find(k=>k.id===a.cartao);
+  return `<li class="sub-row"><button data-edit-sub="${a.id}">
+    <span class="sub-name">${esc(a.nome)}</span>
+    <span class="num">${a.valor!=null?brl(a.valor):'<span class="small">sem valor</span>'}</span>
+    <span class="meta">${card?`<span class="chip card">Cartão ${esc(card.nome)}</span>`:'<span class="chip nocard">Cartão não definido</span>'}${a.dia?`<span>cobra dia ${dd(a.dia)}</span>`:""}</span>
+  </button></li>`;
+}
+function parcRow(p){
+  const card = S.cartoes.find(k=>k.id===p.cartao);
+  const faltam = Math.max(0,(p.parcelas||0)-(p.atual||0));
+  return `<li class="sub-row"><button data-edit-parc="${p.id}">
+    <span class="sub-name">${esc(p.nome)}</span>
+    <span class="num">${brl(p.valor)}</span>
+    <span class="meta"><span class="chip">Parcela ${p.atual}/${p.parcelas}</span>${card?`<span class="chip card">Cartão ${esc(card.nome)}</span>`:'<span class="chip nocard">Cartão não definido</span>'}<span>${faltam?`depois: ${faltam}× · ${brl(restante(p))}`:"última parcela"}</span></span>
+  </button></li>`;
+}
+function parcEditor(id){
+  const isNew = !id;
+  const p = isNew ? {nome:"",cartao:S.cartoes[0]?S.cartoes[0].id:"",valor:null,parcelas:null,atual:1,data:""} : {...S.parcelamentos.find(x=>x.id===id)};
+  openModal({html:()=>`<h2>${isNew?"Nova compra parcelada":"Editar compra parcelada"}</h2>
+    <div class="field"><label for="p-nome">O que foi</label><input id="p-nome" value="${esc(p.nome)}" placeholder="ex.: Cadeira do quarto"></div>
+    <div class="two">
+      <div class="field"><label for="p-card">Cartão</label><select id="p-card"><option value="" ${!p.cartao?"selected":""}>Não definido</option>${cardOptions(p.cartao)}</select></div>
+      <div class="field"><label for="p-data">Data da compra</label><input id="p-data" value="${esc(p.data||"")}" placeholder="dd/mm/aaaa"></div>
+    </div>
+    <div class="field"><label for="p-val">Valor da parcela (R$)</label><input id="p-val" inputmode="decimal" value="${moneyIn(p.valor)}" placeholder="0,00"></div>
+    <div class="two">
+      <div class="field"><label for="p-tot">Total de parcelas</label><input id="p-tot" inputmode="numeric" value="${p.parcelas??""}"></div>
+      <div class="field"><label for="p-at">Parcela nesta fatura</label><input id="p-at" inputmode="numeric" value="${p.atual??1}"></div>
+    </div>
+    <p class="err" id="p-err" hidden></p>
+    <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="p-del">Excluir</button>'}</div>
+      <div><button class="btn" id="p-cancel">Cancelar</button><button class="btn primary" id="p-ok">${isNew?"Adicionar":"Salvar"}</button></div></div>`,
+  bind(o){
+    const g = id => o.querySelector("#"+id);
+    g("p-cancel").onclick = closeModal;
+    if(g("p-del")) g("p-del").onclick = () => { const b=g("p-del"); if(b.dataset.sure){ S.parcelamentos=S.parcelamentos.filter(x=>x.id!==id); change(); closeModal(); } else { b.dataset.sure="1"; b.textContent="Confirmar exclusão"; } };
+    g("p-ok").onclick = () => {
+      const err = g("p-err"), nome = g("p-nome").value.trim(), valor = parseMoney(g("p-val").value);
+      const tot = parseInt(g("p-tot").value,10), at = parseInt(g("p-at").value,10);
+      const fail = m => { err.textContent=m; err.hidden=false; };
+      if(!nome) return fail("Diga o que foi a compra.");
+      if(!isFinite(valor)) return fail("Digite o valor da parcela, por exemplo 155,00.");
+      if(!(tot>=1)) return fail("Informe o total de parcelas.");
+      if(!(at>=1 && at<=tot)) return fail("A parcela desta fatura precisa estar entre 1 e " + tot + ".");
+      const out = {...p, id:p.id||uid("p"), nome, cartao:g("p-card").value, valor, parcelas:tot, atual:at, data:g("p-data").value.trim()};
+      if(isNew) S.parcelamentos.push(out); else S.parcelamentos = S.parcelamentos.map(x=>x.id===id?out:x);
+      change(); closeModal();
+    };
+  }});
+}
+function subEditor(id){
+  const isNew = !id;
+  const a = isNew ? {nome:"",cartao:S.cartoes[0]?S.cartoes[0].id:"",valor:null,dia:null} : {...S.assinaturas.find(x=>x.id===id)};
+  openModal({html:()=>`<h2>${isNew?"Nova assinatura":"Editar assinatura"}</h2>
+    <div class="field"><label for="a-nome">Nome</label><input id="a-nome" value="${esc(a.nome)}" placeholder="ex.: Spotify"></div>
+    <div class="field"><label for="a-card">Cartão</label><select id="a-card"><option value="" ${!a.cartao?"selected":""}>Não definido</option>${cardOptions(a.cartao)}</select></div>
+    <div class="two">
+      <div class="field"><label for="a-val">Valor por mês (R$)</label><input id="a-val" inputmode="decimal" value="${moneyIn(a.valor)}" placeholder="opcional"></div>
+      <div class="field"><label for="a-dia">Cobra dia</label><input id="a-dia" inputmode="numeric" value="${a.dia??""}" placeholder="opcional"></div>
+    </div>
+    <p class="err" id="a-err" hidden></p>
+    <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="a-del">Excluir</button>'}</div>
+      <div><button class="btn" id="a-cancel">Cancelar</button><button class="btn primary" id="a-ok">${isNew?"Adicionar":"Salvar"}</button></div></div>`,
+  bind(o){
+    const g = id => o.querySelector("#"+id);
+    g("a-cancel").onclick = closeModal;
+    if(g("a-del")) g("a-del").onclick = () => { const b=g("a-del"); if(b.dataset.sure){ S.assinaturas=S.assinaturas.filter(x=>x.id!==id); change(); closeModal(); } else { b.dataset.sure="1"; b.textContent="Confirmar exclusão"; } };
+    g("a-ok").onclick = () => {
+      const nome = g("a-nome").value.trim(), rawV = g("a-val").value.trim(), err = g("a-err");
+      if(!nome){ err.textContent="Dê um nome para a assinatura."; err.hidden=false; return; }
+      let valor = null;
+      if(rawV){ valor = parseMoney(rawV); if(!isFinite(valor)){ err.textContent="Digite o valor, por exemplo 21,90."; err.hidden=false; return; } }
+      const diaN = parseInt(g("a-dia").value,10);
+      const out = {...a, id:a.id||uid("a"), nome, cartao:g("a-card").value, valor, dia: diaN>=1&&diaN<=31?diaN:null};
+      if(isNew) S.assinaturas.push(out); else S.assinaturas = S.assinaturas.map(x=>x.id===id?out:x);
+      change(); closeModal();
+    };
+  }});
+}
+
+/* ---------- editores ---------- */
+function openModal(m){ modal = m; renderModal(); }
+function closeModal(){ modal = null; const o=document.getElementById("ov"); if(o) o.remove(); }
+function renderModal(){
+  let o = document.getElementById("ov");
+  if(!o){ o = document.createElement("div"); o.id="ov"; o.className="overlay"; document.body.appendChild(o);
+    o.addEventListener("click", e=>{ if(e.target===o) closeModal(); }); }
+  o.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${modal.html()}</div>`;
+  modal.bind && modal.bind(o);
+  const f = o.querySelector("input,select,textarea"); if(f && !modal.noFocus) f.focus();
+}
+const dayOptions = sel => payDays().map(d=>`<option value="${d}" ${d===sel?"selected":""}>Dinheiro do dia ${dd(d)}</option>`).join("");
+const cardOptions = sel => S.cartoes.map(c=>`<option value="${c.id}" ${c.id===sel?"selected":""}>${esc(c.nome)}</option>`).join("");
+
+function billEditor(id){
+  const isNew = !id;
+  const c = isNew ? {nome:"",grupo:"Pessoal",tipo:"fixa",valor:"",dia:null,pagaCom:payDays()[0]||5,pago:false} : {...S.contas.find(x=>x.id===id)};
+  openModal({html:()=>`
+    <h2>${isNew?"Nova conta":"Editar conta"}</h2>
+    <div class="field"><label for="b-nome">Nome</label><input id="b-nome" value="${esc(c.nome)}" placeholder="ex.: Fatura Inter"></div>
+    <div class="two">
+      <div class="field"><label for="b-grupo">Grupo</label><input id="b-grupo" list="grupos" value="${esc(c.grupo)}"><datalist id="grupos"><option value="Apartamento"><option value="Pessoal"></datalist></div>
+      <div class="field"><label for="b-tipo">Tipo</label><select id="b-tipo">
+        <option value="fixa" ${c.tipo==="fixa"?"selected":""}>Fixa (todo mês)</option>
+        <option value="cartao" ${c.tipo==="cartao"?"selected":""}>Fatura de cartão</option>
+        <option value="parcelado" ${c.tipo==="parcelado"?"selected":""}>Parcelada</option>
+        <option value="avulsa" ${c.tipo==="avulsa"?"selected":""}>Só este mês</option></select></div>
+    </div>
+    <div class="two">
+      <div class="field"><label for="b-valor">Valor (R$)</label><input id="b-valor" inputmode="decimal" value="${moneyIn(c.valor)}" placeholder="0,00"></div>
+      <div class="field"><label for="b-dia">Vence dia</label><input id="b-dia" inputmode="numeric" value="${c.dia??""}" placeholder="opcional"></div>
+    </div>
+    <div class="field"><label for="b-paga">Sai do dinheiro de</label><select id="b-paga">${dayOptions(c.pagaCom)}</select></div>
+    <div class="field" id="w-card" ${c.tipo==="cartao"?"":"hidden"}><label for="b-card">Cartão</label><select id="b-card">${cardOptions(c.cartao)}</select></div>
+    <div class="two" id="w-parc" ${c.tipo==="parcelado"?"":"hidden"}>
+      <div class="field"><label for="b-parc">Total de parcelas</label><input id="b-parc" inputmode="numeric" value="${c.parcelas??""}"></div>
+      <div class="field"><label for="b-pagas">Já pagas</label><input id="b-pagas" inputmode="numeric" value="${c.pagas??0}"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="b-est" ${c.estimado?"checked":""}> Valor ainda é estimativa</label>
+    <div class="two" id="w-est" ${c.estimado?"":"hidden"}>
+      <div class="field"><label for="b-min">Mínimo</label><input id="b-min" inputmode="decimal" value="${moneyIn(c.min)}"></div>
+      <div class="field"><label for="b-max">Máximo</label><input id="b-max" inputmode="decimal" value="${moneyIn(c.max)}"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="b-atr" ${c.atrasado?"checked":""}> Está atrasada</label>
+    <p class="err" id="b-err" hidden></p>
+    <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="b-del">Excluir</button>'}</div>
+      <div><button class="btn" id="b-cancel">Cancelar</button><button class="btn primary" id="b-ok">${isNew?"Adicionar":"Salvar conta"}</button></div></div>`,
+  bind(o){
+    const g = id => o.querySelector("#"+id);
+    g("b-tipo").onchange = e => { g("w-card").hidden = e.target.value!=="cartao"; g("w-parc").hidden = e.target.value!=="parcelado"; };
+    g("b-est").onchange = e => { g("w-est").hidden = !e.target.checked; };
+    g("b-cancel").onclick = closeModal;
+    if(g("b-del")) g("b-del").onclick = () => {
+      if(g("b-del").dataset.sure){ S.contas = S.contas.filter(x=>x.id!==id); change(); closeModal(); }
+      else { g("b-del").dataset.sure="1"; g("b-del").textContent="Confirmar exclusão"; }
+    };
+    g("b-ok").onclick = () => {
+      const nome = g("b-nome").value.trim(), valor = parseMoney(g("b-valor").value);
+      const err = g("b-err");
+      if(!nome){ err.textContent="Dê um nome para a conta."; err.hidden=false; return; }
+      if(!isFinite(valor)){ err.textContent="Digite o valor, por exemplo 1.020,94."; err.hidden=false; return; }
+      const diaN = parseInt(g("b-dia").value,10);
+      const out = {...c, id: c.id || uid("c"), nome, grupo:g("b-grupo").value.trim(), tipo:g("b-tipo").value, valor,
+        dia: diaN>=1&&diaN<=31?diaN:null, pagaCom: Number(g("b-paga").value),
+        estimado: g("b-est").checked, atrasado: g("b-atr").checked};
+      if(out.estimado){ const mn=parseMoney(g("b-min").value), mx=parseMoney(g("b-max").value); out.min=isFinite(mn)?mn:null; out.max=isFinite(mx)?mx:null; } else { delete out.min; delete out.max; }
+      if(out.tipo==="cartao") out.cartao = g("b-card").value; else delete out.cartao;
+      if(out.tipo==="parcelado"){ out.parcelas = parseInt(g("b-parc").value,10)||null; out.pagas = parseInt(g("b-pagas").value,10)||0; } else { delete out.parcelas; delete out.pagas; }
+      if(isNew) S.contas.push(out); else S.contas = S.contas.map(x=>x.id===id?out:x);
+      change(); closeModal();
+    };
+  }});
+}
+
+function simpleEditor({title, fields, onSave, onDelete}){
+  openModal({html:()=>`<h2>${esc(title)}</h2>
+    ${fields.map(f=>`<div class="field"><label for="${f.id}">${esc(f.label)}</label><input id="${f.id}" ${f.money?'inputmode="decimal"':f.int?'inputmode="numeric"':""} value="${esc(f.money?moneyIn(f.value):f.value??"")}" placeholder="${esc(f.ph||"")}"></div>`).join("")}
+    <p class="err" id="s-err" hidden></p>
+    <div class="sheet-actions"><div>${onDelete?'<button class="btn danger" id="s-del">Excluir</button>':""}</div>
+    <div><button class="btn" id="s-cancel">Cancelar</button><button class="btn primary" id="s-ok">Salvar</button></div></div>`,
+  bind(o){
+    const g = id => o.querySelector("#"+id);
+    g("s-cancel").onclick = closeModal;
+    if(onDelete) g("s-del").onclick = () => { const b=g("s-del"); if(b.dataset.sure){ onDelete(); change(); closeModal(); } else { b.dataset.sure="1"; b.textContent="Confirmar exclusão"; } };
+    g("s-ok").onclick = () => {
+      const vals = {};
+      for(const f of fields){
+        const raw = g(f.id).value.trim();
+        if(f.money){ const n=parseMoney(raw); if(!isFinite(n)){ const e=g("s-err"); e.textContent=`Confira o campo "${f.label}" (ex.: 536,05).`; e.hidden=false; return; } vals[f.key]=n; }
+        else if(f.int){ const n=parseInt(raw,10); if(!(n>=1&&n<=31)){ const e=g("s-err"); e.textContent="O dia precisa estar entre 1 e 31."; e.hidden=false; return; } vals[f.key]=n; }
+        else { if(f.required && !raw){ const e=g("s-err"); e.textContent=`Preencha "${f.label}".`; e.hidden=false; return; } vals[f.key]=raw; }
+      }
+      onSave(vals); change(); closeModal();
+    };
+  }});
+}
+
+function exportText(){
+  const L = [], sep = "-".repeat(88);
+  const days = payDays();
+  for(const r of S.receitas) L.push(`Á Receber dia ${dd(r.dia)} do mês - ${brl(r.valor).replace(/\s/g,"")}`, "");
+  L.push(`Total à receber no mês = ${brl(sum(S.receitas)).replace(/\s/g,"")}`, "", sep, "");
+  const grupos = [...new Set(S.contas.map(c=>c.grupo||"Outros"))];
+  for(const gname of grupos){
+    L.push(`${gname.toUpperCase()} -->`, "");
+    for(const c of S.contas.filter(x=>(x.grupo||"Outros")===gname)){
+      let s = `\t${c.nome.toUpperCase()}`;
+      if(c.tipo==="cartao"){ const card=S.cartoes.find(k=>k.id===c.cartao); if(card) s += `(LIM.= ${brl(card.limite).replace(/\s/g,"")})`; }
+      if(c.tipo==="parcelado"&&c.parcelas) s += ` ${(c.pagas||0)+1}/${c.parcelas}`;
+      s += ` = ${brl(c.valor).replace(/\s/g,"")}`;
+      if(c.estimado&&c.min!=null&&c.max!=null) s += ` ?(${brl(c.min).replace(/\s/g,"")}-${brl(c.max).replace(/\s/g,"")})`;
+      if(c.atrasado) s += "(ATRASADO)";
+      if(c.dia) s += ` -> vence ${dd(c.dia)}`;
+      s += ` -> paga com dia ${dd(c.pagaCom)}${c.pago?" [PAGO]":""}`;
+      L.push(s, "");
+    }
+  }
+  for(const d of days) L.push(`\tTOTAL DIA ${dd(d)} = ${brl(dayBlock(d).sai).replace(/\s/g,"")}`);
+  if(S.assinaturas.length){
+    L.push("", sep, "ASSINATURAS -->", "");
+    for(const a of S.assinaturas){ const card=S.cartoes.find(k=>k.id===a.cartao); L.push(`\t${a.nome.toUpperCase()}${a.valor!=null?" = "+brl(a.valor).replace(/\s/g,""):""} -> ${card?"CARTÃO "+card.nome.toUpperCase():"CARTÃO ?"}${a.dia?" (dia "+dd(a.dia)+")":""}`); }
+  }
+  if(S.parcelamentos.length){
+    L.push("", sep, "PARCELADOS NO CARTÃO -->", "");
+    for(const p of S.parcelamentos){ const card=S.cartoes.find(k=>k.id===p.cartao); L.push(`\t${p.nome.toUpperCase()} ${p.parcelas}x${brl(p.valor).replace(/\s/g,"")}/${p.atual}ªparc. -> ${card?"CARTÃO "+card.nome.toUpperCase():"CARTÃO ?"}${p.data?" (compra "+p.data+")":""}`); }
+  }
+  L.push("", sep, "PARADO EM CONTA -->", "");
+  for(const s of S.conta) L.push(`\t${s.nome.toUpperCase()} = ${brl(s.valor).replace(/\s/g,"")}`);
+  L.push("", "", "GUARDADO -->", "");
+  for(const s of S.guardado) L.push(`\t${s.nome.toUpperCase()}${s.taxa?" "+s.taxa:""} = ${brl(s.valor).replace(/\s/g,"")}`);
+  L.push("", `\tTOTAL GUARDADO = ${brl(sum(S.guardado)).replace(/\s/g,"")}`, "", `\tRENDIMENTO = ${brl(S.rendimento).replace(/\s/g,"")}`);
+  return L.join("\n");
+}
+
+function closeMonth(){
+  const t = totals();
+  const pend = S.contas.filter(c=>!c.pago);
+  openModal({noFocus:true, html:()=>`<h2>Fechar ${esc(S.ciclo||"o mês")}</h2>
+    <p class="note">Isso prepara a lista para o próximo mês:</p>
+    <ul class="note" style="margin:0;padding-left:18px;display:grid;gap:4px">
+      <li>contas fixas e faturas voltam como pendentes (faturas ficam com o valor do mês passado até você atualizar);</li>
+      <li>parceladas pagas avançam uma parcela e somem quando terminam;</li>
+      <li>compras parceladas no cartão avançam uma parcela e saem da lista depois da última;</li>
+      <li>contas marcadas “só este mês” que já foram pagas saem da lista.</li></ul>
+    ${pend.length?`<p class="err">${pend.length} conta(s) ainda não marcada(s) como paga(s) (${brl(sum(pend))}). Elas continuam na lista e ficam marcadas como atrasadas.</p>`:""}
+    <div class="field"><label for="m-ciclo">Nome do próximo mês</label><input id="m-ciclo" placeholder="ex.: Dezembro"></div>
+    <div class="sheet-actions"><div></div><div><button class="btn" id="m-cancel">Cancelar</button><button class="btn primary" id="m-ok">Fechar mês</button></div></div>`,
+  bind(o){
+    o.querySelector("#m-cancel").onclick = closeModal;
+    o.querySelector("#m-ok").onclick = () => {
+      const next = [];
+      for(const c of S.contas){
+        if(!c.pago){ next.push({...c, atrasado:true}); continue; }
+        if(c.tipo==="avulsa") continue;
+        if(c.tipo==="parcelado"){ const pagas=(c.pagas||0)+1; if(c.parcelas && pagas>=c.parcelas) continue; next.push({...c,pagas,pago:false,atrasado:false}); continue; }
+        next.push({...c, pago:false, atrasado:false});
+      }
+      S.contas = next;
+      S.parcelamentos = S.parcelamentos.filter(p=>(p.atual||0) < (p.parcelas||0)).map(p=>({...p, atual:(p.atual||0)+1}));
+      S.ciclo = o.querySelector("#m-ciclo").value.trim() || S.ciclo;
+      change(); closeModal();
+    };
+  }});
+}
+
+/* ---------- eventos ---------- */
+$app.addEventListener("click", e => {
+  const el = e.target.closest("button"); if(!el) return;
+  if(el.dataset.toggle){ const c=S.contas.find(x=>x.id===el.dataset.toggle); c.pago=!c.pago; change(); return; }
+  if(el.dataset.edit){ billEditor(el.dataset.edit); return; }
+  if(el.dataset.editSub){ subEditor(el.dataset.editSub); return; }
+  if(el.dataset.editParc){ parcEditor(el.dataset.editParc); return; }
+  if(el.dataset.editRec){
+    const r = S.receitas.find(x=>x.id===el.dataset.editRec);
+    simpleEditor({title:"Recebimento", fields:[
+      {id:"r-nome",key:"nome",label:"Nome",value:r.nome,required:true},
+      {id:"r-dia",key:"dia",label:"Dia que cai",value:r.dia,int:true},
+      {id:"r-val",key:"valor",label:"Valor (R$)",value:r.valor,money:true}],
+      onSave:v=>{ const old=r.dia; Object.assign(r,v); if(old!==r.dia) S.contas.forEach(c=>{ if(c.pagaCom===old) c.pagaCom=r.dia; }); },
+      onDelete: S.receitas.length>1 ? ()=>{ S.receitas=S.receitas.filter(x=>x!==r); } : null});
+    return;
+  }
+  if(el.dataset.editCard){
+    const c = S.cartoes.find(x=>x.id===el.dataset.editCard);
+    simpleEditor({title:"Cartão", fields:[{id:"k-nome",key:"nome",label:"Nome",value:c.nome,required:true},{id:"k-lim",key:"limite",label:"Limite (R$)",value:c.limite,money:true}],
+      onSave:v=>Object.assign(c,v), onDelete:()=>{ S.cartoes=S.cartoes.filter(x=>x!==c); S.assinaturas.forEach(a=>{ if(a.cartao===c.id) a.cartao=""; }); S.parcelamentos.forEach(a=>{ if(a.cartao===c.id) a.cartao=""; }); }});
+    return;
+  }
+  if(el.dataset.editSaldo){
+    const [kind,id] = el.dataset.editSaldo.split(":"); const s = S[kind].find(x=>x.id===id);
+    const fields=[{id:"x-nome",key:"nome",label:"Nome",value:s.nome,required:true}];
+    if(kind==="guardado") fields.push({id:"x-taxa",key:"taxa",label:"Rendimento (ex.: 121% CDI)",value:s.taxa||""});
+    fields.push({id:"x-val",key:"valor",label:"Saldo (R$)",value:s.valor,money:true});
+    simpleEditor({title: kind==="conta"?"Saldo em conta":"Guardado", fields, onSave:v=>Object.assign(s,v), onDelete:()=>{ S[kind]=S[kind].filter(x=>x!==s); }});
+    return;
+  }
+  switch(el.dataset.act){
+    case "new":
+      if(!payDays().length){ saveMsg=""; recEditor(); break; }
+      billEditor(null); break;
+    case "new-rec": recEditor(); break;
+    case "backup": backupDialog(); break;
+    case "toggle-view": view = view==="geral"?"contas":"geral"; try{ sessionStorage.setItem("contas-view", view); }catch(_){} render(); window.scrollTo(0,0); break;
+    case "metas": metasEditor(); break;
+    case "new-sub": subEditor(null); break;
+    case "new-parc": parcEditor(null); break;
+    case "new-card": simpleEditor({title:"Novo cartão", fields:[{id:"k-nome",key:"nome",label:"Nome",value:"",required:true,ph:"ex.: Nubank"},{id:"k-lim",key:"limite",label:"Limite (R$)",value:"",money:true}], onSave:v=>S.cartoes.push({id:uid("k"),...v})}); break;
+    case "new-saldo":
+      openModal({html:()=>`<h2>Novo saldo</h2><div class="field"><label for="n-kind">Onde está</label><select id="n-kind"><option value="conta">Parado em conta</option><option value="guardado">Guardado (rendendo)</option></select></div>
+        <div class="sheet-actions"><div></div><div><button class="btn" id="n-cancel">Cancelar</button><button class="btn primary" id="n-ok">Continuar</button></div></div>`,
+        bind(o){ o.querySelector("#n-cancel").onclick=closeModal; o.querySelector("#n-ok").onclick=()=>{ const k=o.querySelector("#n-kind").value;
+          const fields=[{id:"x-nome",key:"nome",label:"Nome",value:"",required:true,ph:"ex.: Nubank · caixinha"}];
+          if(k==="guardado") fields.push({id:"x-taxa",key:"taxa",label:"Rendimento (ex.: 100% CDI)",value:""});
+          fields.push({id:"x-val",key:"valor",label:"Saldo (R$)",value:"",money:true});
+          simpleEditor({title:"Novo saldo",fields,onSave:v=>S[k].push({id:uid("s"),...v})}); }; }});
+      break;
+    case "rend": simpleEditor({title:"Rendimento do mês", fields:[{id:"y-val",key:"rendimento",label:"Valor (R$)",value:S.rendimento,money:true}], onSave:v=>{S.rendimento=v.rendimento;}}); break;
+    case "export":
+      openModal({noFocus:true, html:()=>`<h2>Formato do bloco de notas</h2><textarea class="export" id="e-txt" readonly>${esc(exportText())}</textarea>
+        <p class="note" id="e-msg">Copie e cole no seu arquivo de texto.</p>
+        <div class="sheet-actions"><div></div><div><button class="btn" id="e-close">Fechar</button><button class="btn primary" id="e-copy">Copiar</button></div></div>`,
+        bind(o){ o.querySelector("#e-close").onclick=closeModal; o.querySelector("#e-copy").onclick=()=>{ const ta=o.querySelector("#e-txt"), msg=o.querySelector("#e-msg");
+          const fallback=()=>{ ta.focus(); ta.select(); msg.textContent="Texto selecionado. Use Ctrl+C para copiar."; };
+          try{ navigator.clipboard.writeText(ta.value).then(()=>{ msg.textContent="Copiado."; }, fallback); }catch(_){ fallback(); } }; }});
+      break;
+    case "close": closeMonth(); break;
+  }
+});
+$app.addEventListener("input", e => { if(e.target.id==="ciclo"){ S.ciclo = e.target.value; persist(); } });
+document.addEventListener("keydown", e => { if(e.key==="Escape" && modal) closeModal(); });
+
+function renderSaveBarOnly(){
+  // evita re-render completo enquanto digita o nome do mês
+  if(!document.querySelector(".savebar")){ const pos = document.activeElement && document.activeElement.id; render(); if(pos){ const el=document.getElementById(pos); if(el){ el.focus(); const n=el.value.length; try{el.setSelectionRange(n,n);}catch(_){}} } }
+}
+function persist(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); storageOk = true; saveMsg = ""; }
+  catch(_){ storageOk = false; saveMsg = "Este navegador não deixou salvar. Use Backup > Exportar para não perder os dados."; }
+}
+function change(){ persist(); render(); }
+
+render();
+})();
+</script>
+<script>
+if("serviceWorker" in navigator){
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(()=>{}); });
+}
+if(navigator.storage && navigator.storage.persist){ navigator.storage.persist().catch(()=>{}); }
+</script>
+</body>
+</html>
