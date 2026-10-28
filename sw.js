@@ -1,6 +1,6 @@
 // Contas do Mês — funciona offline.
 // Ao publicar uma versão nova, troque o número abaixo para os celulares baixarem a atualização.
-const VERSION = "v5";
+const VERSION = "v6";
 const CACHE = "contas-do-mes-" + VERSION;
 const APP = ["./", "./index.html", "./manifest.webmanifest",
   "./icons/icon-192.png", "./icons/icon-512.png", "./icons/icon-maskable-512.png", "./icons/apple-touch-icon.png"];
