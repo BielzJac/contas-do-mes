@@ -14,7 +14,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Contas">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&amp;family=Figtree:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
 <style id="main-style">
 *,*::before,*::after{box-sizing:border-box}
 html{color-scheme:light}
@@ -196,6 +196,29 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .gastos .x:hover{color:var(--bad);background:var(--bad-soft)}
 .section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
 
+/* contas pagas recolhidas */
+.paid-toggle{border-top:1px solid var(--line)}
+.paid-toggle button{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:none;border:0;padding:11px 16px;text-align:left;color:var(--muted);font-size:14px}
+.paid-toggle button:hover{color:var(--ink)}
+.paid-toggle .ok{color:var(--good);font-weight:600}
+.bill-val .small{display:block;font-family:var(--f-body)}
+/* gastos do mês */
+.lanc-day{display:grid;gap:0}
+.lanc{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.lanc:first-child{border-top:0}
+.lanc .meta{grid-column:1/2}
+.lanc .x{background:none;border:0;color:var(--muted);padding:2px 6px;border-radius:6px;font-size:16px;line-height:1}
+.lanc .x:hover{color:var(--bad);background:var(--bad-soft)}
+.chip.cred{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.chip.deb{background:var(--good-soft);color:var(--good);border-color:transparent}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg label{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;background:var(--bg)}
+.seg input{accent-color:var(--accent)}
+.seg label:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+.fc-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:9px 0;border-top:1px solid var(--line)}
+.fc-row:first-child{border-top:0}
+.fc-row .small{grid-column:1/-1}
+
 /* histórico */
 .hist-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
 .hist-sum>div{padding:14px 16px;display:grid;gap:4px;border-left:1px solid var(--line)}
@@ -296,9 +319,7 @@ textarea.export{width:100%;box-sizing:border-box;min-height:300px;font-family:va
 </head>
 <body>
 <div id="app"><p class="empty">Carregando suas contas…</p></div>
-
 <script type="application/json" id="state">{"v":1,"ciclo":"","receitas":[],"contas":[],"cartoes":[],"conta":[],"guardado":[],"rendimento":0,"assinaturas":[],"parcelamentos":[],"notas":[],"categorias":[],"metas":{"gastoMax":null,"economia":null,"reserva":null,"cartaoDia":null}}</script>
-
 <script id="main-script">
 (function(){
 "use strict";
@@ -313,11 +334,14 @@ if(!Array.isArray(S.notas)) S.notas = [];
 if(!Array.isArray(S.categorias)) S.categorias = [];
 if(!Array.isArray(S.envelopes)) S.envelopes = [];
 if(!Array.isArray(S.historico)) S.historico = [];
+if(!Array.isArray(S.lancamentos)) S.lancamentos = [];
+const showPaid = new Set();
+let ultimaForma = "pix", ultimaCat = "";
 let notaFiltro = "todas";
 const TIPOS = {comprar:"Quero comprar", economizar:"Economizar", lembrete:"Lembrete", ideia:"Ideia"};
 if(!S.metas || typeof S.metas!=="object") S.metas = {gastoMax:null, economia:null, reserva:null};
 let view = "contas";
-try{ const sv=sessionStorage.getItem("contas-view"); if(["geral","notas","limites","envelopes","historico"].includes(sv)) view=sv; }catch(_){}
+try{ const sv=sessionStorage.getItem("contas-view"); if(["geral","notas","limites","envelopes","historico","gastos"].includes(sv)) view=sv; }catch(_){}
 const restante = p => Math.max(0,(p.parcelas||0)-(p.atual||0))*(Number(p.valor)||0);
 let dirty = false, saving = false, saveMsg = "", modal = null, artifactApi = undefined;
 
@@ -338,17 +362,31 @@ const moneyIn = v => v==null||v===""?"":String(v.toFixed?v.toFixed(2):v).replace
 
 /* ---------- contas ---------- */
 const sum = a => a.reduce((t,x)=>t+(Number(x.valor)||0),0);
+const cv = c => (c.pago && c.valorPago!=null) ? Number(c.valorPago)||0 : (Number(c.valor)||0);
+const sumC = a => a.reduce((t,c)=>t+cv(c),0);
+const norm = s => String(s||"").trim().toLowerCase();
+const lancCred = card => sum(S.lancamentos.filter(l=>l.forma==="credito" && (!card || l.cartao===card)));
+const lancDeb = () => sum(S.lancamentos.filter(l=>l.forma!=="credito"));
+const lancCat = nome => sum(S.lancamentos.filter(l=>norm(l.cat)===norm(nome)));
+const faturaPendente = card => sum(S.contas.filter(c=>c.tipo==="cartao" && !c.pago && (!card || c.cartao===card)));
+function proximaFatura(card){
+  const ass = sum(S.assinaturas.filter(a=>a.cartao===card && !a.cancelar && a.valor!=null));
+  const parc = sum(S.parcelamentos.filter(p=>p.cartao===card && (p.atual||0) < (p.parcelas||0)));
+  const parcSemValor = S.parcelamentos.some(p=>p.cartao===card && (p.atual||0) < (p.parcelas||0) && p.valor==null);
+  const cred = lancCred(card);
+  return {ass, parc, cred, parcSemValor, total: ass+parc+cred};
+}
 function totals(){
-  const entra = sum(S.receitas), sai = sum(S.contas);
+  const entra = sum(S.receitas), contas = sumC(S.contas), debito = lancDeb(), sai = contas + debito;
   const res = entra - sai;
   const reserva = sum(S.conta) + sum(S.guardado);
   const pendente = sum(S.contas.filter(c=>!c.pago));
-  return {entra, sai, res, reserva, comReserva: res + reserva, pendente};
+  return {entra, sai, contas, debito, res, reserva, comReserva: res + reserva, pendente};
 }
 function dayBlock(dia){
   const rec = S.receitas.filter(r=>r.dia===dia);
   const contas = S.contas.filter(c=>c.pagaCom===dia).sort((a,b)=>(b.atrasado?1:0)-(a.atrasado?1:0) || (a.dia??99)-(b.dia??99));
-  const entra = sum(rec), sai = sum(contas);
+  const entra = sum(rec), sai = sumC(contas);
   return {rec, contas, entra, sai, sobra: entra - sai, falta: sum(contas.filter(c=>!c.pago))};
 }
 const payDays = () => [...new Set(S.receitas.map(r=>r.dia))].sort((a,b)=>a-b);
@@ -359,6 +397,8 @@ function chipsFor(c){
   if(c.estimado) out.push(`<span class="chip est">Estimado${c.min!=null&&c.max!=null?` · ${brl(c.min)}–${brl(c.max)}`:""}</span>`);
   if(c.tipo==="parcelado" && c.parcelas) out.push(`<span class="chip">Parcela ${Math.min((c.pagas||0)+1,c.parcelas)}/${c.parcelas}</span>`);
   if(c.tipo==="cartao") out.push('<span class="chip">Fatura</span>');
+  if(c.valor==null) out.push('<span class="chip est">Informe o valor</span>');
+  if(c.pago && c.valorPago!=null && c.valorPago < (Number(c.valor)||0)) out.push('<span class="chip est">Pago em parte</span>');
   return out.join("");
 }
 const check = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"/></svg>';
@@ -380,8 +420,8 @@ function render(){
     </div>
     <div class="actions">
       ${view==="contas"
-        ? '<button class="btn" data-act="new">+ Nova conta</button><button class="btn" data-act="go-limites">Limites do mês</button><button class="btn" data-act="close">Fechar mês</button>'
-        : `<button class="btn" data-act="go-contas">← Contas</button>${view==="geral"||view==="limites"?'<button class="btn" data-act="metas">Editar metas</button>':""}${view==="limites"?'<button class="btn" data-act="new-cat">+ Categoria</button>':""}${view==="envelopes"?'<button class="btn" data-act="new-env">+ Envelope</button>':""}${view==="historico"?'<button class="btn" data-act="new-hist">+ Mês anterior</button>':""}`}
+        ? '<button class="btn primary" data-act="new-gasto">+ Gasto</button><button class="btn" data-act="new">+ Nova conta</button><button class="btn" data-act="go-limites">Limites do mês</button><button class="btn" data-act="close">Fechar mês</button>'
+        : `<button class="btn" data-act="go-contas">← Contas</button>${view==="geral"||view==="limites"?'<button class="btn" data-act="metas">Editar metas</button>':""}${view==="limites"?'<button class="btn" data-act="new-cat">+ Categoria</button>':""}${view==="envelopes"?'<button class="btn" data-act="new-env">+ Envelope</button>':""}${view==="historico"?'<button class="btn" data-act="new-hist">+ Mês anterior</button>':""}${view==="gastos"?'<button class="btn primary" data-act="new-gasto">+ Gasto</button>':""}`}
     </div>
   </header>
   ${drawerHTML()}`;
@@ -390,10 +430,11 @@ function render(){
   if(view==="limites"){ h += catsHTML(); finish(h); return; }
   if(view==="envelopes"){ h += envelopesHTML(); finish(h); return; }
   if(view==="historico"){ h += historicoHTML(); finish(h); return; }
+  if(view==="gastos"){ h += gastosHTML(); finish(h); return; }
   h += `
   <section class="result" aria-label="Resumo do mês">
     <div><span class="label">Entra no mês</span><span class="v">${brl(t.entra)}</span><span class="sub">${days.map(d=>"dia "+dd(d)).join(" + ")}</span></div>
-    <div><span class="label">Sai no mês</span><span class="v">${brl(t.sai)}</span><span class="sub">${brl(t.pendente)} ainda a pagar</span></div>
+    <div><span class="label">Sai no mês</span><span class="v">${brl(t.sai)}</span><span class="sub">${t.debito?`contas ${brl(t.contas)} + Pix/débito ${brl(t.debito)}`:`${brl(t.pendente)} ainda a pagar`}</span></div>
     <div><span class="label">${t.res>=0?"Sobra":"Falta"}</span><span class="v ${t.res>=0?"pos":"neg"}">${brl(Math.abs(t.res))}</span><span class="sub">só com o que entra</span></div>
     <div><span class="label">${t.comReserva>=0?"Sobra":"Falta"} usando saldos</span><span class="v ${t.comReserva>=0?"pos":"neg"}">${brl(Math.abs(t.comReserva))}</span><span class="sub">conta + guardado: ${brl(t.reserva)}</span></div>
   </section>
@@ -409,14 +450,23 @@ function render(){
     h += `<article class="day" aria-label="Pagamentos com o dinheiro do dia ${dd(d)}">
       <div class="day-head"><h2>Pagar no dia</h2><span class="big">${dd(d)}</span></div>
       ${b.rec.map(r=>`<div class="income"><button data-edit-rec="${r.id}"><span class="label">${esc(r.nome)}</span></button><span class="num">+ ${brl(r.valor)}</span></div>`).join("")}
-      <ul class="list">${b.contas.length?b.contas.map(billRow).join(""):`<li class="empty">Nenhuma conta sai deste dinheiro.</li>`}</ul>
-      <div class="day-foot"><div>${b.sobra>=0?"Sobra":"Falta"}<div class="left">${b.falta>0?brl(b.falta)+" pendente":"tudo pago"}</div></div><span class="num ${b.sobra>=0?"pos":"neg"}">${b.sobra>=0?"":"− "}${brl(Math.abs(b.sobra))}</span></div>
+      <ul class="list">${(()=>{ const pend=b.contas.filter(c=>!c.pago), pagas=b.contas.filter(c=>c.pago);
+        if(!b.contas.length) return `<li class="empty">Nenhuma conta sai deste dinheiro.</li>`;
+        let s = pend.map(billRow).join("");
+        if(pagas.length){ const open = showPaid.has(d);
+          s += `<li class="paid-toggle"><button data-toggle-paid="${d}" aria-expanded="${open}"><span><span class="ok">✓ ${pagas.length} paga${pagas.length>1?"s":""}</span> · <span class="num">${brl(sumC(pagas))}</span></span><span>${open?"Esconder":"Mostrar"}</span></button></li>`;
+          if(open) s += pagas.map(billRow).join(""); }
+        return s; })()}</ul>
+      <div class="day-foot"><div>${b.sobra>=0?"Sobra":"Falta"}<div class="left">${b.contas.some(c=>!c.pago)?(b.falta>0?brl(b.falta)+" pendente":"valor a definir"):"tudo pago"}</div></div><span class="num ${b.sobra>=0?"pos":"neg"}">${b.sobra>=0?"":"− "}${brl(Math.abs(b.sobra))}</span></div>
     </article>`;
   }
   h += `</section>`;
   if(orphan.length){
     h += `<section class="day"><div class="day-head"><h2>Sem dia de pagamento definido</h2></div><ul class="list">${orphan.map(billRow).join("")}</ul></section>`;
   }
+
+  // próximas faturas
+  h += proxFaturasHTML();
 
   // assinaturas
   const subsTotal = sum(S.assinaturas);
@@ -441,14 +491,14 @@ function render(){
   h += `<section class="lower"><div class="panel"><div class="panel-head"><h2>Cartões</h2><button class="btn ghost" data-act="new-card">+ Cartão</button></div>`;
   if(!S.cartoes.length) h += `<p class="note">Nenhum cartão cadastrado.</p>`;
   for(const c of S.cartoes){
-    const fatura = sum(S.contas.filter(x=>x.tipo==="cartao"&&x.cartao===c.id));
+    const fatura = faturaPendente(c.id) + lancCred(c.id) + sum(S.assinaturas.filter(a=>a.cartao===c.id && !a.cancelar && a.valor!=null));
     const futuro = S.parcelamentos.filter(p=>p.cartao===c.id).reduce((t,p)=>t+restante(p),0);
     const pct = c.limite>0 ? Math.min(100, fatura/c.limite*100) : 0;
     const pctF = c.limite>0 ? Math.min(100-pct, futuro/c.limite*100) : 0;
     const usado = pct + pctF;
     h += `<div class="card-row"><div class="line"><button class="btn ghost" style="padding:0;color:var(--ink);font-weight:600" data-edit-card="${c.id}">${esc(c.nome)}</button><span class="num">${brl(fatura)} <span class="small">de ${brl(c.limite)}</span></span></div>
       <div class="bar" role="img" aria-label="${Math.round(usado)}% do limite comprometido"><i class="${usado>=80?"hot":""}" style="width:${pct.toFixed(1)}%"></i>${futuro>0?`<i class="future" style="width:${pctF.toFixed(1)}%"></i>`:""}</div>
-      ${futuro>0?`<div class="legend small"><span>${brl(fatura)} na fatura</span><span class="f">${brl(futuro)} em parcelas futuras</span></div>`:""}
+      ${futuro>0?`<div class="legend small"><span>${brl(fatura)} em gastos e assinaturas</span><span class="f">${brl(futuro)} em parcelas futuras</span></div>`:""}
       <div class="line small"><span>${Math.round(usado)}% do limite ${futuro>0?"comprometido":"na fatura"}${(n=>n?` · ${n} assinatura${n>1?"s":""}`:"")(S.assinaturas.filter(a=>a.cartao===c.id).length)}</span><span class="num">${brl(Math.max(0,c.limite-fatura-futuro))} livre</span></div></div>`;
   }
   h += `</div>`;
@@ -476,19 +526,19 @@ function finish(h){
 }
 /* ---------- dia a dia no cartão ---------- */
 function cartaoDiaADia(){
-  const faturas = sum(S.contas.filter(c=>c.tipo==="cartao"));
-  const fixosCartao = sum(S.assinaturas.filter(a=>a.cartao && a.valor!=null)) + sum(S.parcelamentos.filter(p=>p.cartao));
-  return {faturas, fixosCartao, variavel: Math.max(0, faturas - fixosCartao)};
+  const faturas = sumC(S.contas.filter(c=>c.tipo==="cartao"));
+  const fixosCartao = sum(S.assinaturas.filter(a=>a.cartao && !a.cancelar && a.valor!=null)) + sum(S.parcelamentos.filter(p=>p.cartao && (p.atual||0)<(p.parcelas||0)));
+  return {faturas, fixosCartao, variavel: lancCred()};
 }
 
 /* ---------- limites por categoria ---------- */
 function catsHTML(){
   const M = S.metas, dd2 = cartaoDiaADia();
   const tetoBloco = M.cartaoDia!=null ? (()=>{ const p=M.cartaoDia>0?dd2.variavel/M.cartaoDia*100:0; const st=p<=90?"good":p<=100?"warn":"bad";
-    return `<div class="panel"><div class="panel-head"><div><h2>Dia a dia nos cartões</h2><div class="small">faturas menos assinaturas e parcelas</div></div><span class="pill st-${st}">${st==="bad"?"Acima":"Dentro"}</span></div>
+    return `<div class="panel"><div class="panel-head"><div><h2>Dia a dia nos cartões</h2><div class="small">gastos no crédito anotados este mês (vão para a próxima fatura)</div></div><span class="pill st-${st}">${st==="bad"?"Acima":"Dentro"}</span></div>
       <div class="cat-big"><span class="v ${st==="bad"?"neg":""}">${brl(dd2.variavel)}</span><span class="small num">de ${brl(M.cartaoDia)}</span></div>
       ${meter(p,st)}
-      <div class="line small" style="display:flex;justify-content:space-between;gap:10px"><span>${st==="bad"?brl(dd2.variavel-M.cartaoDia)+" acima do teto":brl(M.cartaoDia-dd2.variavel)+" de folga"}</span><span class="num">faturas ${brl(dd2.faturas)} − fixos ${brl(dd2.fixosCartao)}</span></div>
+      <div class="line small" style="display:flex;justify-content:space-between;gap:10px"><span>${st==="bad"?brl(dd2.variavel-M.cartaoDia)+" acima do teto":brl(M.cartaoDia-dd2.variavel)+" de folga"}</span><span class="small">anote em + Gasto</span></div>
     </div>`; })() : "";
   return `<section aria-label="Limites do mês" style="display:grid;gap:14px">
     <p class="small" style="margin:0">Anote aqui os gastos de delivery, jogos e outras categorias para ver quanto ainda pode gastar. Os gastos zeram quando você fecha o mês.</p>
@@ -496,7 +546,7 @@ function catsHTML(){
   </section>`;
 }
 function catCard(c){
-  const gasto = sum(c.gastos||[]); const p = c.limite>0 ? gasto/c.limite*100 : 0;
+  const gasto = sum(c.gastos||[]) + lancCat(c.nome); const p = c.limite>0 ? gasto/c.limite*100 : 0;
   const st = p<=80?"good":p<=100?"warn":"bad";
   const lista = (c.gastos||[]).slice().reverse();
   return `<div class="panel" aria-label="${esc(c.nome)}">
@@ -565,7 +615,7 @@ function envCard(e){
       <div><button class="btn ${e.feito?"":"primary"}" data-env-feito="${e.id}">${e.feito?"Desfazer":"Marcar como guardado"}</button></div>
     </div>`;
   }
-  const gasto = sum(e.gastos||[]); const p = e.valor>0 ? gasto/e.valor*100 : 0;
+  const gasto = sum(e.gastos||[]) + lancCat(e.nome); const p = e.valor>0 ? gasto/e.valor*100 : 0;
   const st = p<=80?"good":p<=100?"warn":"bad";
   const lista = (e.gastos||[]).slice().reverse();
   return `<div class="panel" aria-label="${esc(e.nome)}">
@@ -617,6 +667,88 @@ function envEditor(id){
   }});
 }
 
+/* ---------- próximas faturas ---------- */
+function proxFaturasHTML(){
+  const cards = S.cartoes.map(c=>({c, f:proximaFatura(c.id)})).filter(x=>x.f.total>0 || x.f.parcSemValor);
+  if(!cards.length) return "";
+  const total = cards.reduce((t,x)=>t+x.f.total,0);
+  const dia = payDays().find(d=>S.receitas.some(r=>r.dia===d && !r.unica));
+  const entra = dia!=null ? sum(S.receitas.filter(r=>r.dia===dia && !r.unica)) : 0;
+  const folga = entra - total;
+  const semValor = cards.some(x=>x.f.parcSemValor);
+  return `<section class="panel" aria-label="Próximas faturas">
+    <div class="panel-head"><div><h2>Próximas faturas</h2><div class="small">assinaturas + parcelas + o que você gastar no crédito a partir de agora</div></div><span class="pill st-${folga>=0?"good":"bad"}">${brl(total)}</span></div>
+    <div>${cards.map(({c,f})=>`<div class="fc-row"><span><strong>${esc(c.nome)}</strong></span><span class="num">${brl(f.total)}</span>
+      <span class="small">assinaturas ${brl(f.ass)} · parcelas ${brl(f.parc)}${f.parcSemValor?" (falta informar uma)":""} · gastos no crédito ${brl(f.cred)}</span></div>`).join("")}</div>
+    ${dia!=null?`<div class="row total" style="border-top:1px solid var(--line);padding-top:10px"><span>No próximo dia ${dd(dia)} entram ${brl(entra)}</span><span class="num ${folga>=0?"pos":"neg"}">${folga>=0?"sobram":"faltam"} ${brl(Math.abs(folga))}</span></div>`:""}
+    ${semValor?'<p class="note" style="margin:0">Informe o valor da parcela em "Parcelados no cartão" para a previsão ficar certa.</p>':""}
+  </section>`;
+}
+
+/* ---------- gastos do mês ---------- */
+function catNomes(){
+  const nomes = [...S.categorias.map(c=>c.nome), ...S.envelopes.filter(e=>e.tipo!=="guardar").map(e=>e.nome)];
+  const seen = new Set(); return nomes.filter(n=>{ const k=norm(n); if(seen.has(k)) return false; seen.add(k); return true; });
+}
+function formaLabel(l){
+  if(l.forma!=="credito") return '<span class="chip deb">Pix/débito</span>';
+  const c = S.cartoes.find(k=>k.id===l.cartao); return `<span class="chip cred">Crédito ${esc(c?c.nome:"")}</span>`;
+}
+function gastosHTML(){
+  const L = S.lancamentos.slice().sort((a,b)=>(b.ts||0)-(a.ts||0));
+  const cred = lancCred(), deb = lancDeb(), tot = cred+deb;
+  const hoje = new Date().getDate();
+  if(!L.length) return `<div class="panel"><h2>Nenhum gasto anotado ainda</h2>
+    <p class="note" style="margin:0">Toque em <strong>+ Gasto</strong> sempre que gastar algo: o valor, o que foi, se foi no crédito ou no Pix/débito e a categoria. A página soma tudo, mostra quanto vai para a próxima fatura e desconta dos limites e envelopes.</p>
+    <div><button class="btn primary" data-act="new-gasto">+ Gasto</button></div></div>`;
+  const porCat = {}; L.forEach(l=>{ const k = l.cat||"Outros"; porCat[k]=(porCat[k]||0)+(Number(l.valor)||0); });
+  const grupos = {}; L.forEach(l=>{ (grupos[l.data]=grupos[l.data]||[]).push(l); });
+  return `
+  <section class="hist-sum" aria-label="Resumo dos gastos">
+    <div><span class="label">Gasto no mês</span><span class="v">${brl(tot)}</span><span class="small">${L.length} lançamento${L.length>1?"s":""}</span></div>
+    <div><span class="label">No crédito</span><span class="v ${cred>0?"neg":""}">${brl(cred)}</span><span class="small">vai para a próxima fatura</span></div>
+    <div><span class="label">Pix / débito</span><span class="v">${brl(deb)}</span><span class="small">já saiu da conta</span></div>
+    <div><span class="label">Média por dia</span><span class="v">${brl(tot/Math.max(1,hoje))}</span><span class="small">até o dia ${hoje}</span></div>
+  </section>
+  <div class="panel"><div class="panel-head"><h2>Por categoria</h2></div>
+    <div class="rows">${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="row"><span>${esc(k)}</span><span class="num">${brl(v)}</span></div>`).join("")}</div>
+  </div>
+  <div class="panel"><div class="panel-head"><h2>Lançamentos</h2></div>
+    ${Object.entries(grupos).map(([dia,ls])=>`<div class="label">${esc(dia)}</div><div class="lanc-day">${ls.map(l=>`<div class="lanc">
+      <span><strong>${esc(l.desc||"Gasto")}</strong></span><span class="num">${brl(l.valor)}</span><button class="x" data-lanc-del="${l.id}" aria-label="Remover gasto">×</button>
+      <span class="meta">${formaLabel(l)}${l.cat?`<span class="chip">${esc(l.cat)}</span>`:""}</span></div>`).join("")}</div>`).join("")}
+  </div>`;
+}
+function gastoEditor(){
+  const formas = [["pix","Pix / débito"], ...S.cartoes.map(c=>["credito:"+c.id, "Crédito "+c.nome])];
+  if(!formas.some(f=>f[0]===ultimaForma)) ultimaForma = "pix";
+  openModal({html:()=>`<h2>Novo gasto</h2>
+    <div class="two">
+      <div class="field"><label for="g-val">Valor (R$)</label><input id="g-val" inputmode="decimal" placeholder="0,00"></div>
+      <div class="field"><label for="g-cat">Categoria</label><select id="g-cat"><option value="">Outros</option>${catNomes().map(n=>`<option ${norm(n)===norm(ultimaCat)?"selected":""}>${esc(n)}</option>`).join("")}</select></div>
+    </div>
+    <div class="field"><label for="g-desc">O que foi</label><input id="g-desc" placeholder="ex.: mercado, gasolina, iFood"></div>
+    <fieldset class="field" style="border:0;padding:0;margin:0"><legend class="label" style="margin-bottom:6px">Como pagou</legend>
+      <div class="seg">${formas.map(([v,l])=>`<label><input type="radio" name="g-forma" value="${v}" ${v===ultimaForma?"checked":""}> ${esc(l)}</label>`).join("")}</div></fieldset>
+    <p class="err" id="g-err" hidden></p>
+    <div class="sheet-actions"><div></div><div><button class="btn" id="g-cancel">Cancelar</button><button class="btn primary" id="g-ok">Anotar gasto</button></div></div>`,
+  bind(o){
+    const g = x => o.querySelector("#"+x), err = g("g-err");
+    g("g-cancel").onclick = closeModal;
+    const salvar = () => {
+      const v = parseMoney(g("g-val").value);
+      if(!isFinite(v) || v<=0){ err.textContent="Digite o valor, por exemplo 45,90."; err.hidden=false; g("g-val").focus(); return; }
+      const f = (o.querySelector('input[name="g-forma"]:checked')||{}).value || "pix";
+      ultimaForma = f; ultimaCat = g("g-cat").value;
+      const [forma, cartao] = f.startsWith("credito:") ? ["credito", f.slice(8)] : ["debito", null];
+      S.lancamentos.push({id:uid("l"), valor:v, desc:g("g-desc").value.trim(), cat:g("g-cat").value, forma, cartao, data:hojeBR().slice(0,5), ts:Date.now()});
+      change(); closeModal();
+    };
+    g("g-ok").onclick = salvar;
+    o.querySelectorAll("#g-val,#g-desc").forEach(i=>i.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); salvar(); } }));
+  }});
+}
+
 /* ---------- histórico ---------- */
 function snapshotMes(){
   const t = totals(), dd2 = cartaoDiaADia();
@@ -624,8 +756,9 @@ function snapshotMes(){
     entrou:t.entra, saiu:t.sai, sobra:t.res, faturas:dd2.faturas, cartaoDia:dd2.variavel, tetoCartao:S.metas.cartaoDia,
     reserva:t.reserva, guardadoMes:sum(S.envelopes.filter(e=>e.tipo==="guardar"&&e.feito)),
     pendentes:S.contas.filter(c=>!c.pago).length,
-    categorias:S.categorias.map(c=>({nome:c.nome, limite:c.limite, gasto:sum(c.gastos||[])})),
-    envelopes:S.envelopes.filter(e=>e.tipo!=="guardar").map(e=>({nome:e.nome, planejado:e.valor, gasto:sum(e.gastos||[])}))};
+    categorias:S.categorias.map(c=>({nome:c.nome, limite:c.limite, gasto:sum(c.gastos||[])+lancCat(c.nome)})),
+    credito:lancCred(), debito:lancDeb(),
+    envelopes:S.envelopes.filter(e=>e.tipo!=="guardar").map(e=>({nome:e.nome, planejado:e.valor, gasto:sum(e.gastos||[])+lancCat(e.nome)}))};
 }
 function histChart(H){
   const W = Math.max(560, H.length*84), Ht = 240, padL = 64, padR = 16, padT = 18, padB = 40;
@@ -756,7 +889,7 @@ function overviewHTML(){
   // dívidas
   const emprest = S.contas.filter(c=>c.tipo==="parcelado"&&c.parcelas);
   const emprestRest = emprest.reduce((s,c)=>s+Math.max(0,c.parcelas-(c.pagas||0))*c.valor,0);
-  const faturas = sum(S.contas.filter(c=>c.tipo==="cartao"));
+  const faturas = faturaPendente() + lancCred();
   const parcFut = S.parcelamentos.reduce((s,p)=>s+restante(p),0);
   const dividaTotal = emprestRest + faturas + parcFut;
   const parcelasMes = sum(emprest) + sum(S.parcelamentos);
@@ -790,7 +923,7 @@ function overviewHTML(){
 
   if(M.cartaoDia!=null){ const dd2=cartaoDiaADia(); const p=M.cartaoDia>0?dd2.variavel/M.cartaoDia*100:0; const st=p<=90?"good":p<=100?"warn":"bad";
     metaRows.push(`<div class="meter"><div class="line"><span>Dia a dia nos cartões</span><span class="pill st-${st}">${st==="bad"?"Acima":"Dentro"}</span></div>${meter(p,st)}<div class="line small"><span class="num">${brl(dd2.variavel)} de ${brl(M.cartaoDia)}</span><span>${st==="bad"?brl(dd2.variavel-M.cartaoDia)+" acima":brl(M.cartaoDia-dd2.variavel)+" de folga"}</span></div></div>`); }
-  for(const c of S.categorias){ const g=sum(c.gastos||[]); const p=c.limite>0?g/c.limite*100:0; const st=p<=80?"good":p<=100?"warn":"bad";
+  for(const c of S.categorias){ const g=sum(c.gastos||[])+lancCat(c.nome); const p=c.limite>0?g/c.limite*100:0; const st=p<=80?"good":p<=100?"warn":"bad";
     metaRows.push(`<div class="meter"><div class="line"><span>${esc(c.nome)}</span><span class="pill st-${st}">${pctTxt(p)}</span></div>${meter(p,st)}<div class="line small"><span class="num">${brl(g)} de ${brl(c.limite)}</span><span>${g<=c.limite?brl(c.limite-g)+" livre":brl(g-c.limite)+" acima"}</span></div></div>`); }
 
   // quando as parcelas acabam
@@ -819,7 +952,7 @@ function overviewHTML(){
     <div class="panel"><div class="panel-head"><h2>Endividamento</h2><span class="pill st-${endividado?(stParc==="bad"||cardPct>80?"bad":"warn"):"good"}">${endividado?"Endividado":"Sob controle"}</span></div>
       <div class="kpi"><span class="v">${brl(dividaTotal)}</span><span class="small">ainda a pagar no total · ${mesesRenda.toFixed(1).replace(".",",")} meses de renda</span></div>
       <div class="ov-lines rows">
-        <div class="row"><span>Faturas atuais</span><span class="num">${brl(faturas)}</span></div>
+        <div class="row"><span>Faturas em aberto + gastos no crédito</span><span class="num">${brl(faturas)}</span></div>
         <div class="row"><span>Parcelas futuras no cartão</span><span class="num">${brl(parcFut)}</span></div>
         <div class="row"><span>Empréstimo (restante)</span><span class="num">${brl(emprestRest)}</span></div>
       </div>
@@ -828,7 +961,7 @@ function overviewHTML(){
 
     <div class="panel"><div class="panel-head"><h2>Limite dos cartões</h2><span class="pill st-${stCard}">${ST_LABEL[stCard]}</span></div>
       <div class="kpi"><span class="v">${pctTxt(cardPct)}</span><span class="small">do limite total comprometido (${brl(faturas+parcFut)} de ${brl(limTotal)})</span></div>
-      ${S.cartoes.map(c=>{ const f=sum(S.contas.filter(x=>x.tipo==="cartao"&&x.cartao===c.id)), fu=S.parcelamentos.filter(p=>p.cartao===c.id).reduce((s,p)=>s+restante(p),0); const p=c.limite>0?(f+fu)/c.limite*100:0; const st=statusOf(p,50,80);
+      ${S.cartoes.map(c=>{ const f=faturaPendente(c.id)+lancCred(c.id), fu=S.parcelamentos.filter(p=>p.cartao===c.id).reduce((s,p)=>s+restante(p),0); const p=c.limite>0?(f+fu)/c.limite*100:0; const st=statusOf(p,50,80);
         return `<div class="meter"><div class="line"><span>${esc(c.nome)}</span><span class="num small">${pctTxt(p)} · ${brl(Math.max(0,c.limite-f-fu))} livre</span></div>${meter(p,st)}</div>`; }).join("")}
     </div>
 
@@ -852,14 +985,15 @@ function overviewHTML(){
   <p class="disclaimer">Os indicadores usam faixas de referência comuns (como até 30% da renda em parcelas). São uma ajuda para enxergar a situação, não uma recomendação financeira.</p>`;
 }
 /* ---------- menu ---------- */
-const VIEWS = {contas:"Contas do Mês", geral:"Visão geral", limites:"Limites do mês", envelopes:"Envelopes", historico:"Histórico", notas:"Notas"};
+const VIEWS = {contas:"Contas do Mês", geral:"Visão geral", limites:"Limites do mês", envelopes:"Envelopes", historico:"Histórico", notas:"Notas", gastos:"Gastos do mês"};
 function drawerHTML(){
   const abertas = S.notas.filter(n=>!n.feito).length;
-  const estouradas = S.categorias.filter(c=>sum(c.gastos||[])>c.limite).length;
+  const estouradas = S.categorias.filter(c=>sum(c.gastos||[])+lancCat(c.nome)>c.limite).length;
   const item = (v,label,extra) => `<button class="nav-item" data-act="go-${v}" ${view===v?'aria-current="page"':""}><span>${label}</span>${extra||""}</button>`;
   return `<nav class="drawer" id="drawer" aria-label="Menu" aria-hidden="true">
     <div class="drawer-head"><strong>Contas do Mês</strong><button class="btn ghost" data-act="menu-close" aria-label="Fechar menu">✕</button></div>
     ${item("contas","Contas")}
+    ${item("gastos","Gastos do mês", S.lancamentos.length?`<span class="count">${S.lancamentos.length}</span>`:"")}
     ${item("geral","Visão geral")}
     ${item("limites","Limites do mês", estouradas?`<span class="count" style="color:var(--bad)">${estouradas} estourou</span>`:"")}
     ${item("envelopes","Envelopes")}
@@ -1157,7 +1291,7 @@ function billRow(c){
     <button class="chk" aria-pressed="${!!c.pago}" aria-label="Marcar ${esc(c.nome)} como ${c.pago?"pendente":"paga"}" data-toggle="${c.id}">${check}</button>
     <button class="bill-main" data-edit="${c.id}"><span class="bill-name">${esc(c.nome)}</span>
       <span class="meta"><span>${esc(c.grupo||"")}${c.dia?` · vence dia ${dd(c.dia)}`:""}</span>${chipsFor(c)}</span></button>
-    <span class="num bill-val">${brl(c.valor)}</span></li>`;
+    <span class="num bill-val">${c.valor==null?'<span class="small">a definir</span>':(c.pago && c.valorPago!=null && c.valorPago<c.valor)?`${brl(c.valorPago)}<span class="small">de ${brl(c.valor)}</span>`:brl(c.valor)}</span></li>`;
 }
 
 function subRow(a){
@@ -1173,8 +1307,8 @@ function parcRow(p){
   const faltam = Math.max(0,(p.parcelas||0)-(p.atual||0));
   return `<li class="sub-row"><button data-edit-parc="${p.id}">
     <span class="sub-name">${esc(p.nome)}</span>
-    <span class="num">${brl(p.valor)}</span>
-    <span class="meta"><span class="chip">Parcela ${p.atual}/${p.parcelas}</span>${card?`<span class="chip card">Cartão ${esc(card.nome)}</span>`:'<span class="chip nocard">Cartão não definido</span>'}<span>${faltam?`depois: ${faltam}× · ${brl(restante(p))}`:"última parcela"}</span></span>
+    <span class="num">${p.valor==null?'<span class="small">a definir</span>':brl(p.valor)}</span>
+    <span class="meta">${(p.atual||0)===0?'<span class="chip">1ª parcela na próxima fatura</span>':`<span class="chip">Parcela ${p.atual}/${p.parcelas}</span>`}${p.antecipar?'<span class="chip t-economizar">Antecipar com o 13º</span>':""}${p.valor==null?'<span class="chip est">Informe o valor</span>':""}${card?`<span class="chip card">Cartão ${esc(card.nome)}</span>`:'<span class="chip nocard">Cartão não definido</span>'}<span>${faltam?`depois: ${faltam}× · ${brl(restante(p))}`:"última parcela"}</span></span>
   </button></li>`;
 }
 function parcEditor(id){
@@ -1189,8 +1323,9 @@ function parcEditor(id){
     <div class="field"><label for="p-val">Valor da parcela (R$)</label><input id="p-val" inputmode="decimal" value="${moneyIn(p.valor)}" placeholder="0,00"></div>
     <div class="two">
       <div class="field"><label for="p-tot">Total de parcelas</label><input id="p-tot" inputmode="numeric" value="${p.parcelas??""}"></div>
-      <div class="field"><label for="p-at">Parcela nesta fatura</label><input id="p-at" inputmode="numeric" value="${p.atual??1}"></div>
+      <div class="field"><label for="p-at">Parcela nesta fatura (0 = ainda não cobrada)</label><input id="p-at" inputmode="numeric" value="${p.atual??1}"></div>
     </div>
+    <label class="check"><input type="checkbox" id="p-ant" ${p.antecipar?"checked":""}> Vou antecipar (quitar antes)</label>
     <p class="err" id="p-err" hidden></p>
     <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="p-del">Excluir</button>'}</div>
       <div><button class="btn" id="p-cancel">Cancelar</button><button class="btn primary" id="p-ok">${isNew?"Adicionar":"Salvar"}</button></div></div>`,
@@ -1203,10 +1338,10 @@ function parcEditor(id){
       const tot = parseInt(g("p-tot").value,10), at = parseInt(g("p-at").value,10);
       const fail = m => { err.textContent=m; err.hidden=false; };
       if(!nome) return fail("Diga o que foi a compra.");
-      if(!isFinite(valor)) return fail("Digite o valor da parcela, por exemplo 155,00.");
+      if(g("p-val").value.trim() && !isFinite(valor)) return fail("Digite o valor da parcela, por exemplo 155,00.");
       if(!(tot>=1)) return fail("Informe o total de parcelas.");
-      if(!(at>=1 && at<=tot)) return fail("A parcela desta fatura precisa estar entre 1 e " + tot + ".");
-      const out = {...p, id:p.id||uid("p"), nome, cartao:g("p-card").value, valor, parcelas:tot, atual:at, data:g("p-data").value.trim()};
+      if(!(at>=0 && at<=tot)) return fail("A parcela desta fatura precisa estar entre 0 e " + tot + ".");
+      const out = {...p, id:p.id||uid("p"), nome, cartao:g("p-card").value, valor: isFinite(valor)?valor:null, parcelas:tot, atual:at, data:g("p-data").value.trim(), antecipar:g("p-ant").checked};
       if(isNew) S.parcelamentos.push(out); else S.parcelamentos = S.parcelamentos.map(x=>x.id===id?out:x);
       change(); closeModal();
     };
@@ -1290,6 +1425,7 @@ function billEditor(id){
       <div class="field"><label for="b-max">Máximo</label><input id="b-max" inputmode="decimal" value="${moneyIn(c.max)}"></div>
     </div>
     <label class="check"><input type="checkbox" id="b-atr" ${c.atrasado?"checked":""}> Está atrasada</label>
+    <div class="field"><label for="b-vpago">Se pagou só uma parte, quanto pagou (R$)</label><input id="b-vpago" inputmode="decimal" value="${moneyIn(c.valorPago)}" placeholder="opcional"></div>
     <p class="err" id="b-err" hidden></p>
     <div class="sheet-actions"><div>${isNew?"":'<button class="btn danger" id="b-del">Excluir</button>'}</div>
       <div><button class="btn" id="b-cancel">Cancelar</button><button class="btn primary" id="b-ok">${isNew?"Adicionar":"Salvar conta"}</button></div></div>`,
@@ -1303,14 +1439,17 @@ function billEditor(id){
       else { g("b-del").dataset.sure="1"; g("b-del").textContent="Confirmar exclusão"; }
     };
     g("b-ok").onclick = () => {
-      const nome = g("b-nome").value.trim(), valor = parseMoney(g("b-valor").value);
+      const nome = g("b-nome").value.trim(), rawValor = g("b-valor").value.trim(), valor = rawValor ? parseMoney(rawValor) : null;
+      const rawPago = g("b-vpago").value.trim(), valorPago = rawPago ? parseMoney(rawPago) : null;
       const err = g("b-err");
       if(!nome){ err.textContent="Dê um nome para a conta."; err.hidden=false; return; }
-      if(!isFinite(valor)){ err.textContent="Digite o valor, por exemplo 1.020,94."; err.hidden=false; return; }
+      if(rawValor && !isFinite(valor)){ err.textContent="Digite o valor, por exemplo 1.020,94."; err.hidden=false; return; }
+      if(rawPago && !isFinite(valorPago)){ err.textContent="Confira o valor pago, por exemplo 1.500,00."; err.hidden=false; return; }
       const diaN = parseInt(g("b-dia").value,10);
       const out = {...c, id: c.id || uid("c"), nome, grupo:g("b-grupo").value.trim(), tipo:g("b-tipo").value, valor,
         dia: diaN>=1&&diaN<=31?diaN:null, pagaCom: Number(g("b-paga").value),
-        estimado: g("b-est").checked, atrasado: g("b-atr").checked};
+        estimado: g("b-est").checked, atrasado: g("b-atr").checked, valorPago};
+      if(valorPago==null) delete out.valorPago;
       if(out.estimado){ const mn=parseMoney(g("b-min").value), mx=parseMoney(g("b-max").value); out.min=isFinite(mn)?mn:null; out.max=isFinite(mx)?mx:null; } else { delete out.min; delete out.max; }
       if(out.tipo==="cartao") out.cartao = g("b-card").value; else delete out.cartao;
       if(out.tipo==="parcelado"){ out.parcelas = parseInt(g("b-parc").value,10)||null; out.pagas = parseInt(g("b-pagas").value,10)||0; } else { delete out.parcelas; delete out.pagas; }
@@ -1372,6 +1511,10 @@ function exportText(){
     L.push("", sep, "PARCELADOS NO CARTÃO -->", "");
     for(const p of S.parcelamentos){ const card=S.cartoes.find(k=>k.id===p.cartao); L.push(`\t${p.nome.toUpperCase()} ${p.parcelas}x${brl(p.valor).replace(/\s/g,"")}/${p.atual}ªparc. -> ${card?"CARTÃO "+card.nome.toUpperCase():"CARTÃO ?"}${p.data?" (compra "+p.data+")":""}`); }
   }
+  if(S.lancamentos.length){
+    L.push("", sep, "GASTOS DO MÊS -->", "");
+    for(const l of S.lancamentos.slice().sort((a,b)=>(a.ts||0)-(b.ts||0))){ const c=S.cartoes.find(k=>k.id===l.cartao); L.push(`\t${l.data} ${(l.desc||"Gasto").toUpperCase()} = ${brl(l.valor).replace(/\s/g,"")} (${l.forma==="credito"?"CRÉDITO "+(c?c.nome.toUpperCase():""):"PIX/DÉBITO"})${l.cat?" ["+l.cat+"]":""}`); }
+  }
   const abertas = S.notas.filter(n=>!n.feito);
   if(abertas.length){
     L.push("", sep, "NOTAS -->", "");
@@ -1395,7 +1538,9 @@ function closeMonth(){
   openModal({noFocus:true, html:()=>`<h2>Fechar ${esc(S.ciclo||"o mês")}</h2>
     <p class="note">Isso prepara a lista para o próximo mês:</p>
     <ul class="note" style="margin:0;padding-left:18px;display:grid;gap:4px">
-      <li>contas fixas e faturas voltam como pendentes (faturas ficam com o valor do mês passado até você atualizar);</li>
+      <li>contas fixas voltam como pendentes; cada fatura passa a ter o valor previsto (assinaturas + parcelas + gastos no crédito), marcado como estimado;</li>
+      <li>recebimentos extras (como o 13º) saem da lista;</li>
+      <li>os gastos do mês vão para o Histórico e a lista recomeça vazia;</li>
       <li>parceladas pagas avançam uma parcela e somem quando terminam;</li>
       <li>compras parceladas no cartão avançam uma parcela e saem da lista depois da última;</li>
       <li>contas marcadas “só este mês” que já foram pagas saem da lista;</li>
@@ -1411,12 +1556,15 @@ function closeMonth(){
       S.historico.push(snapshotMes());
       const next = [];
       for(const c of S.contas){
-        if(!c.pago){ next.push({...c, atrasado:true}); continue; }
+        if(!c.pago){ next.push({...c, atrasado:c.valor!=null}); continue; }
         if(c.tipo==="avulsa") continue;
         if(c.tipo==="parcelado"){ const pagas=(c.pagas||0)+1; if(c.parcelas && pagas>=c.parcelas) continue; next.push({...c,pagas,pago:false,atrasado:false}); continue; }
-        next.push({...c, pago:false, atrasado:false});
+        if(c.tipo==="cartao"){ const pf = proximaFatura(c.cartao); const n = {...c, valor: Math.round(pf.total*100)/100, estimado:true, pago:false, atrasado:false}; delete n.valorPago; next.push(n); continue; }
+        const n = {...c, pago:false, atrasado:false}; delete n.valorPago; next.push(n);
       }
       S.contas = next;
+      S.receitas = S.receitas.filter(r=>!r.unica);
+      S.lancamentos = [];
       S.categorias = S.categorias.map(c=>({...c, gastos:[]}));
       S.envelopes = S.envelopes.map(e=>({...e, gastos:[], feito:false}));
       S.parcelamentos = S.parcelamentos.filter(p=>(p.atual||0) < (p.parcelas||0)).map(p=>({...p, atual:(p.atual||0)+1}));
@@ -1431,6 +1579,8 @@ $app.addEventListener("click", e => {
   if(e.target.classList && e.target.classList.contains("drawer-ov")){ setMenu(false); return; }
   const tr = e.target.closest && e.target.closest("tr[data-hist]"); if(tr){ histDetalhe(tr.dataset.hist); return; }
   const el = e.target.closest("button"); if(!el) return;
+  if(el.dataset.togglePaid){ const d=Number(el.dataset.togglePaid); showPaid.has(d)?showPaid.delete(d):showPaid.add(d); render(); return; }
+  if(el.dataset.lancDel){ S.lancamentos = S.lancamentos.filter(l=>l.id!==el.dataset.lancDel); change(); return; }
   if(el.dataset.toggle){ const c=S.contas.find(x=>x.id===el.dataset.toggle); c.pago=!c.pago; change(); return; }
   if(el.dataset.edit){ billEditor(el.dataset.edit); return; }
   if(el.dataset.editSub){ subEditor(el.dataset.editSub); return; }
@@ -1472,7 +1622,7 @@ $app.addEventListener("click", e => {
   switch(el.dataset.act){
     case "new": if(!payDays().length){ recEditor(); break; } billEditor(null); break;
     case "new-rec": setMenu(false); recEditor(); break;
-    case "go-contas": case "go-geral": case "go-limites": case "go-envelopes": case "go-historico": case "go-notas":
+    case "go-contas": case "go-geral": case "go-limites": case "go-envelopes": case "go-historico": case "go-notas": case "go-gastos":
       view = el.dataset.act.slice(3);
       try{ sessionStorage.setItem("contas-view", view); }catch(_){} render(); window.scrollTo(0,0); break;
     case "menu": setMenu(true); break;
@@ -1482,6 +1632,7 @@ $app.addEventListener("click", e => {
     case "new-cat": catEditor(null); break;
     case "new-env": envEditor(null); break;
     case "new-hist": histManual(); break;
+    case "new-gasto": gastoEditor(); break;
     case "metas": metasEditor(); break;
     case "new-sub": subEditor(null); break;
     case "new-parc": parcEditor(null); break;
